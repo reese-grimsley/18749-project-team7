@@ -3,27 +3,72 @@
 # used https://realpython.com/python-sockets/
 
 import socket
+import DebugLogger
 
-HOST = '127.0.0.1'  # Standard loopback interface address (localhost)
-PORT = 19618        # Port to listen on (non-privileged ports are > 1023)
+logger = DebugLogger.get_logger('echoserver')
 
-# FIXME: socket needs to be recycled (or spawned into a separate thread to handle that client in parallel on an offshoot of the main socket); current error: the program closes immediately after first use. See socket.create_server
-# TODO: accept a connection for the local fault detector. Expect to receive a particular message from an incoming connection on 127.0.0.1 (localhost), and send back a particular message. Do not modify state. Recommended to reuse the same port as the other incoming connections from clients. 
+LOCAL_HOST = '127.0.0.1'  # Standard loopback interface address (localhost)
+DEFAULT_PORT = 19618        # Port to listen on (non-privileged ports are > 1023)
+MAGIC_MSG_LFD = b"lfd-heartbeat" # if we receive this message, we know it's heartbeat, so x shouldn't be
 
-with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-    s.bind((HOST, PORT))
-    s.listen()
-    state_x = 0
-    conn, addr = s.accept()
-    with conn:
-        print('Connected by', addr)
-        print("state_x is " + str(state_x))
-        while True:
+
+# host and port might change
+HOST = LOCAL_HOST
+PORT = DEFAULT_PORT
+
+# After successfully processing 1 heartbeat, server stops responding
+
+
+## This is the original server. I will be changing some structures
+# with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+#     s.bind((HOST, PORT))
+#     s.listen()
+#     state_x = 0
+#     conn, addr = s.accept()
+#     with conn:
+#         logger.info('Connected by', addr)
+#         logger.info("state_x is " + str(state_x))
+#         while True:
+#             data = conn.recv(1024)
+#             if not data:
+#                 #print("Waiting for something else")
+#                 continue
+#             logger.info(data)
+#             # server received valid data
+#             # we now need to distinguish if this is from client or lfd
+#             if data == MAGIC_MSG_LFD:
+#                 # this is heartbeat so we won't increment
+#                 logger.info("received heartbeat from LFD")
+                
+#             else:
+#                 state_x += 1
+#                 logger.info("state_x after the increment is " + str(state_x))
+            
+#             conn.sendall(data)
+
+while True:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind((HOST, PORT))
+        s.listen()
+        state_x = 0
+        conn, addr = s.accept()
+        with conn:
+            logger.info('Connected by', addr)
+            logger.info("state_x is " + str(state_x))
             data = conn.recv(1024)
             if not data:
-                break
-            print(data)
-            # we now know it is valid data
-            state_x += 1
-            print("state_x after the increment is " + str(state_x))
+                #print("Waiting for something else")
+                continue
+            logger.info(data)
+            # server received valid data
+            # we now need to distinguish if this is from client or lfd
+            if data == MAGIC_MSG_LFD:
+                # this is heartbeat so we won't increment
+                logger.info("received heartbeat from LFD")
+                
+            else:
+                state_x += 1
+                logger.info("state_x after the increment is " + str(state_x))
+            
             conn.sendall(data)
+
