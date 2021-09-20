@@ -3,13 +3,22 @@
 # used https://realpython.com/python-sockets/
 
 import socket
+import DebugLogger
+logger = DebugLogger.get_logger('client')
 
-HOST = '127.0.0.1'  # The server's hostname or IP address
+HOST = 'ece002.ece.local.cmu.edu'  # The server's hostname or IP address
 PORT = 19618        # The port used by the server
 
-with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+try:    
     s.connect((HOST, PORT))
-    s.sendall(b'Hello, world')
-    data = s.recv(1024)
+except s.error as e:
+    logger.error(str(e))
+    
+while True:
+    request = input('Request Something: ')
+    s.sendall(str.encode(request))
+    response = s.recv(1024)
+    logger.info('Received from server: ' + response.decode('utf-8'))
 
-print('Received', repr(data))
+s.close()
