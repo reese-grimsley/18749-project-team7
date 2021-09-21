@@ -25,7 +25,7 @@ def parse_args():
 
     return args.ip, args.port, args.client_id
 
-def main(ip, port, client_id):
+def run_client(ip, port, client_id):
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client_socket:
             client_socket.connect((ip, port))
@@ -35,14 +35,15 @@ def main(ip, port, client_id):
                 data = input("\nType in something to send!\n")
                 if data == '': data = "Hello World"
                 data += ' ' + str(request_number)
+
                 client_socket.sendall(data.encode('utf-8'))
                 response_data = client_socket.recv(1024)
+
                 if response_data != b'':
                     logger.warning("Nothing received from server; connection may be closed")
-
+                    #TODO; something much more intelligent here. Retry making the connection? Contact the replica manager? Contact IT? Cry?
                 logger.debug('Received [%s]', response_data.decode('utf-8'))
 
-                #TODO; more holistic message structure, including server id, client id, request_number
                 request_number += 1
     
     except KeyboardInterrupt:
@@ -50,4 +51,4 @@ def main(ip, port, client_id):
 
 if __name__ == "__main__":
     ip, port, client_id = parse_args() #won't we need multiple ip, port pairs for each of the replicas? Can pull from config file, CLI, or even RM
-    main(ip, port, client_id)
+    run_client(ip, port, client_id)

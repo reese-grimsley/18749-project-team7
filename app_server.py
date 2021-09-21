@@ -41,6 +41,7 @@ def application_server_handler(client_socket, client_addr):
 
             else:
                 echo(client_socket, data)
+                #TODO: data should be structured
                 state_x += 1
                 logger.info("state_x is " + str(state_x))
 
@@ -59,13 +60,13 @@ def respond_to_heartbeat(client_socket, response_msg=constants.MAGIC_MSG_LFD_RES
     client_socket.sendall(response_msg.encode('utf-8'))
 
 
-def main(ip, port):
+def application_server(ip, port):
 
-    basic_server(application_server_handler, ip, port, logger=logger, reuse_addr=True)
+    basic_server(application_server_handler, ip, port, logger=logger, reuse_addr=True, deamonic=True)
 
     logger.info("Echo Server Shutdown\n\n")
 
 if __name__ == "__main__":
     ip, port = parse_args()
-    main(ip, port)
+    application_server(ip, port)
     print('done')
