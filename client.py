@@ -4,6 +4,7 @@
 
 import socket
 import argparse
+import time
 import DebugLogger, constants
 from helper import is_valid_ipv4
 
@@ -27,24 +28,27 @@ def parse_args():
 
 def run_client(ip, port, client_id):
     try:
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client_socket:
-            client_socket.connect((ip, port))
-            request_number = 1
-            while True:
+        while True:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client_socket:
+                client_socket.connect((ip, port))
+                request_number = 1
+                while True:
 
-                data = input("\nType in something to send!\n")
-                if data == '': data = "Hello World"
-                data += ' ' + str(request_number)
+                    data = input("\nType in something to send!\n")
+                    if data == '': data = "Hello World"
+                    data += ' ' + str(request_number)
 
-                client_socket.sendall(data.encode('utf-8'))
-                response_data = client_socket.recv(1024)
+                    client_socket.sendall(data.encode('utf-8'))
+                    response_data = client_socket.recv(1024)
 
-                if response_data != b'':
-                    logger.warning("Nothing received from server; connection may be closed")
-                    #TODO; something much more intelligent here. Retry making the connection? Contact the replica manager? Contact IT? Cry?
-                logger.debug('Received [%s]', response_data.decode('utf-8'))
+                    if response_data == b'':
+                        logger.warning("Nothing received from server; connection may be closed; let's wait a moment and retry")
+                        time.sleep(10)
+                        break; #break inner loop
+                        #TODO; something much more intelligent here. Retry making the connection? Contact the replica manager? Contact IT? Cry?
+                    logger.debug('Received [%s]', response_data.decode('utf-8'))
 
-                request_number += 1
+                    request_number += 1
     
     except KeyboardInterrupt:
         logger.critical('Keyboard interrupt in client; exiting')
