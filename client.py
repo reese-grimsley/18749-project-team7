@@ -13,7 +13,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Application Server")
 
     parser.add_argument('-p', '--port', metavar='p', default=constants.DEFAULT_APP_SERVER_PORT, help='The port that the server will be listening to and that this LFD will access', type=int)
-    parser.add_argument('-i', '--ip', metavar='i', default=constants.CATCH_ALL_IP, help='The period between each heartbeat, in seconds', type=str)
+    parser.add_argument('-i', '--ip', metavar='i', default=constants.CATCH_ALL_IP, help='The IP address of the application server', type=str)
     parser.add_argument('-c', '--client_id', metavar='c', default=1, help="A client identifier (an integer, for simplicity)", type=int) #could also just be a string
     args = parser.parse_args()
 

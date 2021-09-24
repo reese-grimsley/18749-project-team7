@@ -20,7 +20,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Application Server")
 
     parser.add_argument('-p', '--port', metavar='p', default=constants.DEFAULT_APP_SERVER_PORT, help='The port that the server will be listening to and that this LFD will access', type=int)
-    parser.add_argument('-i', '--ip', metavar='i', default=constants.CATCH_ALL_IP, help='The period between each heartbeat, in seconds', type=str)
+    parser.add_argument('-i', '--ip', metavar='i', default=constants.CATCH_ALL_IP, help='The IP address this server should bind to -- defaults to 0.0.0.0, which will work across any local address', type=str)
     args = parser.parse_args()
 
     if args.port < 1024 or args.port > 65535:
