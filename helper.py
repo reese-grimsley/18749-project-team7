@@ -12,6 +12,47 @@ def is_valid_ipv4(ipv4):
         return False
     return True
 
+def addr_to_ip_port(addr, userspace_port_only=True):
+    '''
+    Return the ip and port of an address using typical ipv4 convention of X.X.X.X:P
+    addr: format in X.X.X.X:P form, e.g. 255.255.255.255:1001
+    return: IP and port as first and second argument. IP is an ipv4 string, and port is an integer
+    '''
+    try:
+        ip = addr.split(':')[0]
+        assert is_valid_ipv4(ip), 'Invalid IP address! should be format like 255.255.255.255:1001; you gave: ' + addr
+        port = int(addr.split(':')[1])
+        if userspace_port_only and (port < 1024 or port > 65535):
+            raise ValueError("Invalid port number! Must between 1024 and 65535!")
+        return ip, port
+
+    except Exception as e:
+        helper_logger.error(e)
+        return None, None 
+
+def parse_addresses_file(path):
+    '''
+    Assumes the file at ``path`` is a set of lines, in which each line contains N IP:Port, where N is an integer, IP is an ipv4 address, and port is valid user-space port
+    :param path: a path to the file to read.
+    :return: a list of server address info. Each item is a tuple, in which the first value is the server ID, and second is the IP:port string.
+    '''
+    try: 
+        with open(path, 'r') as f:
+            server_info = []
+            lines = f.readlines()
+            for line in lines:
+                server_id = int(line.split(' ')[0])
+                addr_str = line.split(' ')[1]
+                server_info.append((server_id, addr_str))
+
+            helper_logger.info(server_info)
+            return server_info
+
+    except Exception as e:
+        helper_logger.error(e)
+        raise e
+
+
 def basic_server(handler_function, ip=constants.CATCH_ALL_IP, port=constants.DEFAULT_APP_SERVER_PORT, logger=helper_logger, reuse_addr=True, daemonic=True):
     '''
     Basic server application. Accepts new connections and forks a thread for that new socket
