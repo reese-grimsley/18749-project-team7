@@ -71,7 +71,7 @@ class Client:
         try:
             while True:
                 self.logger.info("ip %s, port %d, id %d test", ip, port, server_id)
-                break
+                # break
 
                 with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client_socket:
                     client_socket.connect((ip, port))
@@ -98,6 +98,13 @@ class Client:
             self.logger.critical('Keyboard interrupt in client; exiting')
 
     def run_duplication_handler(self, response_queue):
+        '''
+        Response queue will be a queue.Queue. It will receive 2 types of messages
+        1) A message that says a request has been initiated for the servers. It will contain a request number
+        2) A message that includes the response from one of the servers. It will contain a request number, the replica number, and the response data.
+
+        Handled by Kiran
+        '''
         pending_responses = {}
 
         while True:
