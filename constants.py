@@ -9,5 +9,9 @@ MAGIC_MSG_LFD_REQUEST = "lfd-heartbeat" #in case we want to differentiate based 
 MAGIC_MSG_LFD_RESPONSE = "lfd-heartbeat" #expect to get this information back exactly from the server
 DEFAULT_HEARTBEAT_PERIOD = 1 # seconds
 
+MAGIC_MSG_GFD_REQUEST = "gfd request lfd-heartbeat" 
+MAGIC_MSG_RESPONSE_FROM_LFD = "lfd sends heartbeat to gfd"
+MAGIC_MSG_SERVER_START = "Server started"
+MAGIC_MSG_SERVER_FAIL = "Server failed"
 IPV4_REGEX = '^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$'
 
