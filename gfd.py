@@ -6,7 +6,7 @@ from helper import is_valid_ipv4
 import sched
 
 DEFAULT_PORT = 15213
-DEFAULT_HOST = ece001.ece.local.cmu.edu
+DEFAULT_HOST = 'ece001.ece.local.cmu.edu'
 membership = []
 logger = DebugLogger.get_logger('gfd')
 
@@ -23,10 +23,10 @@ def parse_args():
         raise ValueError('The port must be between 1024 and 65535')
     if args.heartbeat <= 0: 
         raise ValueError('The heartbeat must be a positive value')
-    if not is_valid_ipv4(args.ip): 
+    '''if not is_valid_ipv4(args.ip): 
         print(args.ip)
         raise ValueError('The IP address given [%s] is not a valid format', args.ip)
-
+    '''
     return args.ip, args.port, args.heartbeat
 
 
@@ -44,7 +44,7 @@ def cancel_membership(data):
     logger.info("Remove " + server_id + " out membership")
     membership.remove(server_id)
 
-def poke_lfd(conn):
+def poke_lfd(conn, period):
     success = False
     try: 
         conn.sendall(bytes(constants.MAGIC_MSG_GFD_REQUEST, encoding='utf-8'))
