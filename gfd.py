@@ -34,9 +34,10 @@ def register_membership(data):
 def cancel_membership(data):
     response = str(data)
     response_list = response.split()
-    server_id = response_list[len(response_list) - 1]
-    logger.info("Remove " + str(server_id) + " out membership")
-    membership.remove(server_id)
+    server_ip = response_list[len(response_list) - 1]
+    logger.info("Remove " + str(server_ip) + " out membership")
+    if server_ip in membership:
+        membership.remove(server_ip)
 
 def poke_lfd(conn, period):
     success = False

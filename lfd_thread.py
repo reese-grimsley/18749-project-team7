@@ -5,6 +5,7 @@ import threading
 
 logger = DebugLogger.get_logger('lfd')
 server_response = 0
+server_fail = False
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Local Fault Detector")
@@ -24,24 +25,52 @@ def parse_args():
 
     return args.ip, args.port, args.heartbeat, args.gip, args.gport 
 
-def handle_server(lfd_socket, period):
+def poke_server(lfd_socket):
+    success = False
     global server_response
+    try: 
+        lfd_socket.sendall(bytes(constants.MAGIC_MSG_LFD_REQUEST, encoding='utf-8'))
+        logger.info("LFD sends heartbeat request to server")
+        response = lfd_socket.recv(1024).decode(encoding='utf-8')
+        logger.info('Received from socket: [%s]', str(response))
+        if constants.MAGIC_MSG_LFD_RESPONSE in response:
+            logger.info("Received from server: [%s]", str(response))
+            server_response += 1
+            success = True
+            
+    except socket.timeout as st:
+        logger.error("Heartbeat request timed out")
+        success = False
+    except Exception as e:
+        logger.error(e)
+        
+    return success
+    
+    
+def handle_server(lfd_socket, period):
+    global server_fail
+    num_failures = 0
     try:
         while True:
-            lfd_socket.sendall(str.encode(constants.MAGIC_MSG_LFD_REQUEST))
-            logger.info("LFD sends heartbeat request to server")
-            response = lfd_socket.recv(1024).decode(encoding='utf-8')
-            if constants.MAGIC_MSG_LFD_RESPONSE in response:
-                logger.info("Received from server: [%s]", str(response))
-                server_response += 1
+            server_status = poke_server(lfd_socket)
+            if not server_status:
+                num_failures += 1 
+                server_fail = True
+                logger.warning("Server failed to respond; %d failures", num_failures)
+                break
                 
             time.sleep(period)
             
     except Exception as e:
         logger.debug(e)
+        
+    finally:
+        lfd_socket.close()
 
 def handle_gfd(lfd_socket, period, server_ip):
     global server_response
+    global server_fail
+
     while True:
         data = lfd_socket.recv(1024).decode(encoding='utf-8')
         if not data:
@@ -55,13 +84,20 @@ def handle_gfd(lfd_socket, period, server_ip):
             logger.info("LFD sends add server request to GFD")
             response = constants.MAGIC_MSG_SERVER_START + " at " + str(server_ip)
             lfd_socket.sendall(str.encode(response))
+        if server_fail is True:
+            print("Cancel!!!!")
+            logger.info("LFD sends delete server request to GFD")
+            response = constants.MAGIC_MSG_SERVER_FAIL + " at " + str(server_ip)
+            lfd_socket.sendall(str.encode(response))
+            server_fail = False
+            
     #except Exception as e:
     #    print(e)
         
 def start_conn(ip, port, period, recipient):
     try: 
         lfd_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        #lfd_socket.settimeout(period/2)
+        lfd_socket.settimeout(period + 2)
         lfd_socket.connect((ip, port))
         logger.info('Connected to %s', ip)
         if recipient is "gfd":
