@@ -21,3 +21,7 @@ MAGIC_MSG_LFD_REQUEST_SERVER = "Request for server heartbeat"
 
 IPV4_REGEX = '^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$'
 
+QUEUE_TIMEOUT = 5.0 #seconds that reading from a queue will block for before returning 'None'
+CLIENT_SERVER_TIMEOUT = 30.0 # seconds that will pass in 'recv' before exiting with a TimeoutError
+
+NULL_SERVER_ID = -1 

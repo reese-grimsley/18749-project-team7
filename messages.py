@@ -9,7 +9,7 @@ import pickle
 
 class Message():
 
-    def __init__(self, data=b''):
+    def __init__(self, data=None):
         self.data = data
         pass
 
@@ -22,7 +22,7 @@ class Message():
         return pickle.dumps(self.data)
 
     @classmethod
-    def deserialize(byte_data):
+    def deserialize(cls, byte_data):
         assert isinstance(byte_data, bytes) or isinstance(byte_data, bytearray), "We can only deserialize a byte array"
         #
         return Message(data=pickle.loads(byte_data))
@@ -45,6 +45,24 @@ class ClientRequestMessage(Message):
         response = ClientResponseMessage(self.client_id, self.request_number, self.request_data, self.server_id)
         return response
 
+    def serialize(self):
+        '''
+        return bytes or bytearray that can be directly send through a socket
+        '''
+        return pickle.dumps(self)
+
+    @classmethod
+    def deserialize(cls, byte_data):
+        assert isinstance(byte_data, bytes) or isinstance(byte_data, bytearray), "We can only deserialize a byte array"
+        #
+        reqMessage = pickle.loads(byte_data)
+        if isinstance(reqMessage, ClientRequestMessage): return reqMessage
+        else: 
+            return None
+
+    def __repr__(self):
+        return '<ClientRequestMessage: c_ID[%d], s_ID[%d], req #[%d], data: {%s}>' % (self.client_id, self.server_id, self.request_number, self.request_data)
+
 class ClientResponseMessage(Message):
     '''
     Send from server to client as part of normal request-response flow
@@ -57,13 +75,45 @@ class ClientResponseMessage(Message):
         self.response_data = response_data
         self.server_id = server_id
 
+    def serialize(self):
+        '''
+        return bytes or bytearray that can be directly send through a socket
+        '''
+        return pickle.dumps(self)
+
+    @classmethod
+    def deserialize(cls, byte_data):
+        assert isinstance(byte_data, bytes) or isinstance(byte_data, bytearray), "We can only deserialize a byte array"
+        #
+        reqMessage = pickle.loads(byte_data)
+        if isinstance(reqMessage, ClientResponseMessage): return reqMessage
+        else: 
+            return None
+
+    def __repr__(self):
+        return '<ClientResponseMessage: c_ID[%d], s_ID[%d], req #[%d], data: {%s}>' % (self.client_id, self.server_id, self.request_number, self.response_data)
+
+
 class AckMessage(Message):
     '''
     Simple acknowledgement
     '''
 
     def __init__(self, ack_data=b''):
-        super().__init__()
-        self.ack_data = ack_data
+        super().__init__(data=ack_data)
+
+class KillThreadMessage():
+
+    '''
+    Threads cnanot actually be killed from another thread; they have to be daemonic and exit on automagically when the main thread dies, or return/kill themselves. 
+
+
+    This message tells the thread to kill itself, but probably close out all resources first. The message is not intended to be sent over a network connection
+
+    This basically just exists so we can check for an instance of something, rather than some magic value or tuple format. Keeping it simple
+    '''
+
+    def __init__(self):
+        pass
 
 # GFD, LFD messages?
