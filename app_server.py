@@ -37,6 +37,7 @@ def application_server_handler(client_socket, client_addr):
         data = client_socket.recv(1024)
         while data != b'':
             if constants.MAGIC_MSG_LFD_RESPONSE in data.decode('utf-8'):
+                logger.info("Received from LFD: %s", str(data.decode('utf-8')))
                 respond_to_heartbeat(client_socket)
 
             else:
