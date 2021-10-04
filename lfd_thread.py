@@ -67,7 +67,7 @@ def handle_server(lfd_socket, period):
     finally:
         lfd_socket.close()
 
-def handle_gfd(lfd_socket, period, server_ip):
+def handle_gfd(lfd_socket, server_ip):
     global server_response
     global server_fail
 
