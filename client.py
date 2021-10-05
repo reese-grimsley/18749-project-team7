@@ -38,6 +38,13 @@ def parse_args():
 
     return args.ip, args.port, args.client_id, address_info
 
+class ClientConnectedMessage():
+    '''
+    Inform the duplication handler about the status of a connected server. Message is meant to be passed through a queue
+    '''
+    def __init__(self, server_id, is_connected):
+        self.server_d = server_id
+        self.is_connected = is_connected
 
 class Client:
     def __init__(self, address_info=[], client_id=1):
@@ -123,23 +130,26 @@ class Client:
                 with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client_socket:
 
                     kill_signal_received = False
-
                     while not kill_signal_received:
                         is_connected = False
                         try: 
                             client_socket.connect((ip, port))
+                            client_socket.settimeout(constants.CLIENT_SERVER_TIMEOUT)
                             is_connected = True
+                            connected_message = ClientConnectedMessage(server_id, True)
+                            duplication_handler_queue.put(connected_message)
                         except Exception as e:
                             self.logger.error('Failed to connect')
                             self.logger.error(e)
                             is_connected = False
+
 
                         while is_connected and not kill_signal_received:
                             # read from input queue with small timeout
                             new_request = outgoing_message_queue.get(block=True, timeout=constants.QUEUE_TIMEOUT)
 
                             if new_request is None: 
-                                pass #probably just empty queue
+                                pass #probably just empty queue and timed out
 
                             elif isinstance(new_request, KillThreadMessage):
                                 self.logger.info('Received thread kill signal -- exiting thread for server [%d]', server_id)
@@ -147,9 +157,13 @@ class Client:
 
                             elif isinstance(new_request, ClientRequestMessage):
                                 #do all the normal stuff. Should maybe be a function call
-                                response = self.do_request_response(new_request, client_socket)
-                                if response is None:
-                                    is_connected = False # assuming if we get no response, that the connection is dead
+                                try: 
+                                    response = self.do_request_response(new_request, client_socket)
+                                    if response is None:
+                                        is_connected = False # assuming if we get no response, that the connection is dead
+                                except TimeoutError as to:
+                                    self.logger.info('client timed out. Kill connection and try again')
+                                    is_connection = False
                                 duplication_handler_queue.put(response)
 
                             else:
@@ -157,6 +171,8 @@ class Client:
 
                         self.logger.info("Closing socket to server [%d]", server_id)
                         client_socket.close()
+                        connected_message = ClientConnectedMessage(server_id, False)
+                        duplication_handler_queue.put(connected_message)
                         ##TODO: inform voter thread that this server is no longer being used? Implies giving it info that we were able to initiate the connection
                         time.sleep(1) #give some time before trying to reconnect
 
@@ -192,19 +208,23 @@ class Client:
 
         except socket.timeout as to:
             self.logger.error('Socket timeout: %s', to)
-            response_message = None
+            raise to
+            # response_message = None
 
         except Exception as e:
             self.logger.error(e) 
-            response_message = None
+            raise e
+            # response_message = None
 
         return response_message
 
     def run_duplication_handler(self, response_queue):
         '''
-        Response queue will be a queue.Queue. It will receive 2 types of messages
-        1) A message that says a request has been initiated for the servers. It will contain a request number
-        2) A message that includes the response from one of the servers. It will contain a request number, the replica number, and the response data.
+        Response queue will be a queue.Queue. It will receive 4 types of messages
+        1) A message that says a request has been initiated for the servers. It will contain a request number. Instance of messages.ClientRequestMessage
+        2) A message that includes the response from one of the servers. It will contain a request number, the replica number, and the response data. Instance of messages.ClientReponseMessage
+        3) A message informing whether a server connection has been successfully created or torn down. Instance ofclient.ClientConnectedMessage
+        4) A message informing the thread it should exit. Instance of messages.KillThreadMessage
 
         This thread needs to print messages that are avoided due to being duplication. Let's use the 'critical' logging level for this so that it always shows and we can suppress other output for demos
 
