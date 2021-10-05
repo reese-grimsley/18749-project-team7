@@ -41,6 +41,8 @@ def parse_addresses_file(path):
             server_info = []
             lines = f.readlines()
             for line in lines:
+                if line[0] == '#': continue
+                
                 server_id = int(line.split(' ')[0])
                 addr_str = line.split(' ')[1]
                 server_info.append((server_id, addr_str))

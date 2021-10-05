@@ -6,6 +6,7 @@ import socket
 import traceback, argparse
 import DebugLogger, constants
 from helper import basic_server, is_valid_ipv4
+import messages
 
 # host and port might change
 HOST = constants.LOCAL_HOST # this needs to be outward facing (meaning localhost doesn't work)
@@ -35,6 +36,9 @@ def application_server_handler(client_socket, client_addr):
     global state_x
     try:
         data = client_socket.recv(1024)
+        #TODO: assume the data is a byte/bytearray representation of a class in 'messages.py' that 
+        msg = messages.deserialize(data)
+        #TODO: message dispatcher
         while data != b'':
             if constants.MAGIC_MSG_LFD_RESPONSE in data.decode('utf-8'):
                 logger.info("Received from LFD: %s", str(data.decode('utf-8')))

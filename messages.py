@@ -7,6 +7,11 @@ Each message should have a predefined format when it's turned into a 'bytes' or 
 
 import pickle
 
+def deserialize(data):
+    if not isinstance(data, bytes) and not isinstance(data, bytearray):
+        raise ValueError("Can only deserialize bytes or bytearray's")
+    return pickle.loads(data)
+
 class Message():
 
     def __init__(self, data=None):
@@ -20,12 +25,6 @@ class Message():
         if isinstance(self.data, bytes) or isinstance(self.data, bytearray):
             return self.data
         return pickle.dumps(self.data)
-
-    @classmethod
-    def deserialize(cls, byte_data):
-        assert isinstance(byte_data, bytes) or isinstance(byte_data, bytearray), "We can only deserialize a byte array"
-        #
-        return Message(data=pickle.loads(byte_data))
 
 
 class ClientRequestMessage(Message):
