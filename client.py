@@ -11,6 +11,8 @@ import DebugLogger, constants
 from helper import is_valid_ipv4, parse_addresses_file, addr_to_ip_port
 import messages
 
+NO_OF_ACTIVE_SERVERS = 3
+
 DebugLogger.set_console_level(30)
 DebugLogger.setup_file_handler('./client.log', level=1)
 logger = DebugLogger.get_logger('client')
@@ -228,15 +230,22 @@ class Client:
         '''
         Response queue will be a queue.Queue. It will receive 4 types of messages
         1) A message that says a request has been initiated for the servers. It will contain a request number. Instance of messages.ClientRequestMessage
-        2) A message that includes the response from one of the servers. It will contain a request number, the replica number, and the response data. Instance of messages.ClientReponseMessage
+        2) A message that includes the response from one of the servers. It will contain a request number, the replica number, and the response data. Instance of messages.ClientResponseMessage
         3) A message informing whether a server connection has been successfully created or torn down. Instance ofclient.ClientConnectedMessage
         4) A message informing the thread it should exit. Instance of messages.KillThreadMessage
 
         This thread needs to print messages that are avoided due to being duplication. Let's use the 'critical' logging level for this so that it always shows and we can suppress other output for demos
 
-        Handled by Kiran
         '''
-        pending_responses = {}
+
+        '''
+        Helpful data structures for duplication handling.
+        '''
+        # accumulates the first unique message(for each req) from one of the server
+        final_responses_queue = queue.Queue()
+
+        #Dictionary which helps in finding duplicates
+        find_dup_resp_msg = {}
 
         while True:
 
@@ -245,6 +254,46 @@ class Client:
             try: 
                 msg = response_queue.get(block=True, timeout=constants.QUEUE_TIMEOUT)
                 logger.debug('Duplication handler received msg: [%s]', msg)
+
+                #no duplicates for this msg...just enq the resp
+                if(isinstance(msg, messages.ClientRequestMessage)):
+                    final_responses_queue.put(msg)
+                    
+                #handle duplicates in this case    
+                elif(isinstance(msg, messages.ClientResponseMessage)):  
+                    req_no = msg.request_number  
+                    s_id = msg.server_id
+                    if req_no in find_dup_resp_msg: 
+                        logger.debug('Duplicate response with request number %d discarded from server %d', req_no, s_id) 
+                        #increment to keep track of the number of messages we have got with the same req_no till now
+                        find_dup_resp_msg[req_no] = (find_dup_resp_msg[req_no] + 1)
+
+                        #remove the element with req_no as the key from the dictionary 
+                        # we no longer need it as all possible duplicates are received if the below condn is satisfied
+                        if(find_dup_resp_msg[req_no] == NO_OF_ACTIVE_SERVERS)
+                            find_dup_resp_msg.pop(req_no)
+
+                    else: 
+                        # no duplicates yet...
+                        # create an entry in the Dictionary
+                        # enq the first unique msg to response queue    
+                        find_dup_resp_msg[req_no] = 1  
+                        final_responses_queue.put(msg)
+
+
+                # ? DOUBTFUL about this... 
+                # no duplicates for this msg...just enq the resp
+                elif(isinstance(msg, client.ClientConnectedMessage)): 
+                    final_responses_queue.put(msg) 
+
+                #no duplicates for this msg...just enq the resp
+                elif(isinstance(msg,messages.KillThreadMessage)):         
+                    final_responses_queue.put(msg)     
+
+                else:
+                    logger.error('It should not reach here. no such msg.')    
+
+
 
             except queue.Empty: continue
 
