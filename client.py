@@ -77,6 +77,8 @@ class Client:
         self.voter_thread = (threading.Thread(target=self.run_duplication_handler, args=[duplication_handler_queue]), duplication_handler_queue)
         self.voter_thread[0].start()
 
+
+        # main run loop; this is client facing
         try: 
             request_number = 1
             while True:
@@ -84,6 +86,7 @@ class Client:
                 data = input("\nType in something to send!\n")
                 if data == '': data = "Hello World"
 
+                # Have some data to send now; let's create ClientRequestMessages and send to all the threads through queues
                 self.logger.info('Sending message #%d [%s] to the servers', request_number, data)
 
                 for server_thread in self.server_communicating_threads:
@@ -97,13 +100,16 @@ class Client:
 
                     server_thread[1].put(client_message)
 
+                # Let the voter/duplication handler thread know that a new request has been generated, and that it should expect to receive messages with a particular request number
                 client_voter_message = messages.ClientRequestMessage(self.client_id, request_number, copy.copy(data), constants.NULL_SERVER_ID)
-                self.voter_thread[1].put(client_voter_message) #input
+                self.voter_thread[1].put(client_voter_message) 
+
+                request_number += 1
 
 
         except KeyboardInterrupt:
             self.logger.warning("Received KB interrupt in main client thread. Program should now end to kill server-connect and voter threads. ")
-        except Exception as e:
+        except Exception:
             self.logger.error(traceback.format_exc())
         finally: 
             # kill the other threads here, then exit. 
@@ -129,7 +135,7 @@ class Client:
         '''
         assert isinstance(outgoing_message_queue, queue.Queue) and isinstance(duplication_handler_queue, queue.Queue), "queue objects should be from queue.Queue"
         try:
-            self.logger.info("ip %s, port %d, id %d", ip, port, server_id)
+            self.logger.info("Client-server handler for ip %s, port %d, S_id %d", ip, port, server_id)
 
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client_socket:
 
