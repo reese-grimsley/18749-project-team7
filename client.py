@@ -241,9 +241,6 @@ class Client:
         '''
         Helpful data structures for duplication handling.
         '''
-        # accumulates the first unique message(for each req) from one of the server
-        final_responses_queue = queue.Queue()
-
         #Dictionary which helps in finding duplicates
         find_dup_resp_msg = {}
 
@@ -255,16 +252,16 @@ class Client:
                 msg = response_queue.get(block=True, timeout=constants.QUEUE_TIMEOUT)
                 logger.debug('Duplication handler received msg: [%s]', msg)
 
-                #no duplicates for this msg...just enq the resp
+                #no duplicates for this msg...
                 if(isinstance(msg, messages.ClientRequestMessage)):
-                    final_responses_queue.put(msg)
+                    continue
                     
                 #handle duplicates in this case    
                 elif(isinstance(msg, messages.ClientResponseMessage)):  
                     req_no = msg.request_number  
                     s_id = msg.server_id
                     if req_no in find_dup_resp_msg: 
-                        logger.debug('Duplicate response with request number %d discarded from server %d', req_no, s_id) 
+                        logger.critical('Duplicate response with request number %d discarded from server %d', req_no, s_id) 
                         #increment to keep track of the number of messages we have got with the same req_no till now
                         find_dup_resp_msg[req_no] = (find_dup_resp_msg[req_no] + 1)
 
@@ -276,19 +273,16 @@ class Client:
                     else: 
                         # no duplicates yet...
                         # create an entry in the Dictionary
-                        # enq the first unique msg to response queue    
                         find_dup_resp_msg[req_no] = 1  
-                        final_responses_queue.put(msg)
 
 
-                # ? DOUBTFUL about this... 
-                # no duplicates for this msg...just enq the resp
+                # no duplicates for this msg...
                 elif(isinstance(msg, client.ClientConnectedMessage)): 
-                    final_responses_queue.put(msg) 
+                    continue
 
-                #no duplicates for this msg...just enq the resp
+                #no duplicates for this msg...
                 elif(isinstance(msg,messages.KillThreadMessage)):         
-                    final_responses_queue.put(msg)     
+                    continue     
 
                 else:
                     logger.error('It should not reach here. no such msg.')    
