@@ -2,6 +2,7 @@
 
 # used https://realpython.com/python-sockets/
 
+from os import kill
 import socket
 import argparse
 import time, threading, queue
@@ -251,8 +252,8 @@ class Client:
 
         # variable to keep track of active servers communicating with the client
         num_active_servers = 0
-
-        while True:
+        kill_signal_received = False
+        while not kill_signal_received:
 
             self.logger.info('here')
             msg = None
@@ -287,13 +288,15 @@ class Client:
                 elif(isinstance(msg, client.ClientConnectedMessage)): 
                     if msg.is_connected == True :
                         num_active_servers = (num_active_servers + 1)
+                    else:
+                        num_active_servers = (num_active_servers - 1)     
+
                         
                 # decrement active servers as a server has disconnected
                 elif(isinstance(msg,messages.KillThreadMessage)):         
-                    num_active_servers = (num_active_servers - 1)     
-
+                    kill_signal_received = True
                 else:
-                    logger.error('It should not reach here. no such msg.')    
+                    logger.error('It should not reach here. no such msg. msg: [%s]', msg)    
 
             except queue.Empty: continue
 
