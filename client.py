@@ -11,7 +11,6 @@ import DebugLogger, constants
 from helper import is_valid_ipv4, parse_addresses_file, addr_to_ip_port
 import messages
 
-NO_OF_ACTIVE_SERVERS = 3
 
 DebugLogger.set_console_level(30)
 DebugLogger.setup_file_handler('./client.log', level=1)
@@ -250,6 +249,9 @@ class Client:
         #Dictionary which helps in finding duplicates
         find_dup_resp_msg = {}
 
+        # variable to keep track of active servers communicating with the client
+        num_active_servers = 0
+
         while True:
 
             self.logger.info('here')
@@ -258,42 +260,40 @@ class Client:
                 msg = response_queue.get(block=True, timeout=constants.QUEUE_TIMEOUT)
                 logger.debug('Duplication handler received msg: [%s]', msg)
 
-                #no duplicates for this msg...
                 if(isinstance(msg, messages.ClientRequestMessage)):
-                    continue
+                    req_no = msg.request_number
+                    # create an entry in the Dictionary for the corresponding request number (to keep track of it)
+                    find_dup_resp_msg[req_no] = 0  
                     
                 #handle duplicates in this case    
                 elif(isinstance(msg, messages.ClientResponseMessage)):  
                     req_no = msg.request_number  
                     s_id = msg.server_id
                     if req_no in find_dup_resp_msg: 
-                        logger.critical('Duplicate response with request number %d discarded from server %d', req_no, s_id) 
+
                         #increment to keep track of the number of messages we have got with the same req_no till now
                         find_dup_resp_msg[req_no] = (find_dup_resp_msg[req_no] + 1)
+                        
+                        # It is a duplicate msg if the value of the entry is more than 1
+                        if find_dup_resp_msg[req_no] > 1:
+                            logger.critical('Duplicate response with request number %d discarded from server %d', req_no, s_id) 
 
                         #remove the element with req_no as the key from the dictionary 
                         # we no longer need it as all possible duplicates are received if the below condn is satisfied
-                        if(find_dup_resp_msg[req_no] == NO_OF_ACTIVE_SERVERS)
+                        if find_dup_resp_msg[req_no] == num_active_servers:
                             find_dup_resp_msg.pop(req_no)
 
-                    else: 
-                        # no duplicates yet...
-                        # create an entry in the Dictionary
-                        find_dup_resp_msg[req_no] = 1  
-
-
-                # no duplicates for this msg...
+                # increment active servers as a new server has established connection with the client
                 elif(isinstance(msg, client.ClientConnectedMessage)): 
-                    continue
-
-                #no duplicates for this msg...
+                    if msg.is_connected == True :
+                        num_active_servers = (num_active_servers + 1)
+                        
+                # decrement active servers as a server has disconnected
                 elif(isinstance(msg,messages.KillThreadMessage)):         
-                    continue     
+                    num_active_servers = (num_active_servers - 1)     
 
                 else:
                     logger.error('It should not reach here. no such msg.')    
-
-
 
             except queue.Empty: continue
 
