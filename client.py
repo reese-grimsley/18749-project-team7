@@ -276,7 +276,7 @@ class Client:
                         
                         # It is a duplicate msg if the value of the entry is more than 1
                         if find_dup_resp_msg[req_no] > 1:
-                            logger.critical('Duplicate response with request number %d discarded from server %d', req_no, s_id) 
+                            logger.critical('request_num %d: Discarded duplicate reply from S%d', req_no, s_id)
 
                         #remove the element with req_no as the key from the dictionary 
                         # we no longer need it as all possible duplicates are received if the below condn is satisfied
