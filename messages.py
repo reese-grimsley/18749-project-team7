@@ -6,6 +6,7 @@ Each message should have a predefined format when it's turned into a 'bytes' or 
 '''
 
 import pickle
+import constants
 
 def deserialize(data):
     if not isinstance(data, bytes) and not isinstance(data, bytearray):
@@ -100,6 +101,13 @@ class AckMessage(Message):
 
     def __init__(self, ack_data=b''):
         super().__init__(data=ack_data)
+
+class LFDMessage(Message):
+    '''
+    A message for the local fault detector to send to server replicas
+    '''
+    def __init__(self, data=constants.MAGIC_MSG_LFD_REQUEST):
+        super().__init__(data=data)
 
 class KillThreadMessage():
 
