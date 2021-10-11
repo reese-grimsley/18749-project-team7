@@ -69,7 +69,7 @@ class ClientRequestMessage(Message):
             return None
 
     def __repr__(self):
-        return '<ClientRequestMessage: c_ID[%d], s_ID[%d], req #[%d], data: {%s}>' % (self.client_id, self.server_id, self.request_number, self.request_data)
+        return '{ClientRequestMessage: <C%d, S%d, %d, "%s">}' % (self.client_id, self.server_id, self.request_number, self.request_data)
 
 class ClientResponseMessage(Message):
     '''
@@ -99,7 +99,7 @@ class ClientResponseMessage(Message):
             return None
 
     def __repr__(self):
-        return '<ClientResponseMessage: c_ID[%d], s_ID[%d], req #[%d], data: {%s}>' % (self.client_id, self.server_id, self.request_number, self.response_data)
+        return '{ClientResponseMessage: <C%d, S%d, %d, "%s">}' % (self.client_id, self.server_id, self.request_number, self.response_data)
 
 
 class AckMessage(Message):
