@@ -61,7 +61,7 @@ def serve_lfd(conn, addr, period):
             #lfd_status = poke_lfd(conn, period)
             conn.sendall(bytes(constants.MAGIC_MSG_GFD_REQUEST, encoding='utf-8'))
             data = conn.recv(1024).decode(encoding='utf-8')
-            logger.info('Received from socket: [%s]', str(data))
+            logger.info('Received from LFD %s: [%s]', str(addr), str(data))
 
             if constants.MAGIC_MSG_RESPONSE_FROM_LFD in data:    # if receive lfd heartbeat
                 success = True
@@ -80,9 +80,9 @@ def serve_lfd(conn, addr, period):
         logger.info("in serve lfd")
         print(e)
 
-    '''finally: 
+    finally: 
         conn.close()
-        logger.info('Closed connection for lfd at (%s)', addr)'''
+        logger.info('Closed connection for lfd at (%s)', addr)
 
 
 def start_conn(ip, port, period):
