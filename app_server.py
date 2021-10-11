@@ -39,7 +39,7 @@ def application_server_handler(client_socket, client_addr):
     connected = True
     try:
         while connected:
-            data = client_socket.recv(constants.MAX_MSG_SIZE) # assume that we will send no message larger than this
+            data = client_socket.recv(constants.MAX_MSG_SIZE) # assume that we will send no message larger than this. Assume no timeout here.
             if data == b'':
                 connected = False
             #TODO: assume the data is a byte/bytearray representation of a class in 'messages.py' that 
@@ -48,6 +48,9 @@ def application_server_handler(client_socket, client_addr):
                 msg = messages.deserialize(data)
             except pickle.UnpicklingError:
                 logger.error("Unexpected Message format; could not deserialize") 
+            except EOFError:
+                logger.error("deserialization reached end of buffer without finishing; data was %d bytes, and we can only handle %d per recv call", len(data), constants.MAX_MSG_SIZE)
+                #If we're hitting this error, then we need to consider sending a length in the first few bytes and looping here until we have received that entire length
 
             #dispatch message handler
             if isinstance(msg, messages.ClientRequestMessage):
@@ -75,7 +78,7 @@ def echo(client_socket, msg:messages.ClientRequestMessage, extra_data=''):
         response_data = msg.request_data + " : " + extra_data
 
     response_msg = messages.ClientResponseMessage(msg.client_id, msg.request_number, response_data, msg.server_id)    
-    logger.critical('Reponse to client: %s', response_msg)
+    logger.critical('Response to client: %s', response_msg)
     response_bytes = response_msg.serialize()
     client_socket.sendall(response_bytes)
 
