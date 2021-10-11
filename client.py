@@ -105,6 +105,7 @@ class Client:
                 self.voter_thread[1].put(client_voter_message) 
 
                 request_number += 1
+                time.sleep(.25) #just a quick delay
 
 
         except KeyboardInterrupt:
@@ -137,20 +138,24 @@ class Client:
         try:
             self.logger.info("Client-server handler for ip %s, port %d, S_id %d", ip, port, server_id)
 
-            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client_socket:
 
-                kill_signal_received = False
-                while not kill_signal_received:
-                    is_connected = False
+            kill_signal_received = False
+            while not kill_signal_received:
+                is_connected = False
+                with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client_socket:
+
                     try: 
-                        client_socket.settimeout(constants.CLIENT_SERVER_TIMEOUT)
+                        # client_socket.settimeout(constants.CLIENT_SERVER_TIMEOUT)
                         client_socket.connect((ip, port))
+                        client_socket.settimeout(constants.CLIENT_SERVER_TIMEOUT)
+
                         is_connected = True
+                        self.logger.info('Connected!')
+
                         connected_message = ClientConnectedMessage(server_id, True)
                         duplication_handler_queue.put(connected_message)
-                    except Exception as e:
-                        self.logger.error('Failed to connect')
-                        self.logger.error(traceback.format_exc())
+                    except Exception:
+                        self.logger.warning('Failed to connect to S%d', server_id)
                         # print(traceback.format_exc())
                         is_connected = False
 
@@ -205,6 +210,7 @@ class Client:
 
         try: 
             req_data = request_message.serialize()
+            self.logger.critical('Send message to server: %s', request_message)
             sock.sendall(req_data)
 
             #TODO: expect ACK? Assume no ACKs for ACKs
@@ -217,7 +223,7 @@ class Client:
 
             else: 
                 response_message = messages.deserialize(response_data)
-                self.logger.info('Received response for server #%d:  [%s]', request_message.server_id, response_message)
+                self.logger.critical('Receive message from server: %s', response_message)
                 #TODO: send ACK? Assume no ACKs for ACKs
 
         except socket.timeout as to:
@@ -285,7 +291,7 @@ class Client:
                             find_dup_resp_msg.pop(req_no)
 
                 # increment active servers as a new server has established connection with the client
-                elif(isinstance(msg, client.ClientConnectedMessage)): 
+                elif(isinstance(msg, ClientConnectedMessage)): 
                     if msg.is_connected == True :
                         num_active_servers = (num_active_servers + 1)
                     else:

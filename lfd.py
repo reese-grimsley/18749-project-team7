@@ -6,6 +6,8 @@ import DebugLogger, constants
 from helper import is_valid_ipv4
 import threading
 
+import messages
+
 logger = DebugLogger.get_logger('lfd')
 server_response = 0
 server_fail = False
@@ -39,12 +41,16 @@ def poke_server(client_socket):
     #create a new socket every single time; restart from scratch
     success = False
     try: 
-        client_socket.sendall(bytes(constants.MAGIC_MSG_LFD_REQUEST, encoding='utf-8'))
-        data = client_socket.recv(1024).decode(encoding='utf-8')
-        if constants.MAGIC_MSG_LFD_RESPONSE in data:
-            logger.debug('Received from server: [%s]', data)
+        lfd_message = messages.LFDMessage()
+        lfd_bytes = lfd_message.seralize()
+        # client_socket.sendall(bytes(constants.MAGIC_MSG_LFD_REQUEST, encoding='utf-8'))
+        client_socket.sendall(lfd_bytes)
+        response_bytes = client_socket.recv(constants.MAX_MSG_SIZE)
+        response_msg = messages.deserialize(response_bytes)
+        if constants.MAGIC_MSG_LFD_RESPONSE in response_msg.data:
+            logger.debug('Received from server: [%s]', response_msg.data)
             success = True
-            server_response += 1
+            # server_response += 1
             
     except socket.timeout as st:
         logger.error("Heartbeat request timed out")

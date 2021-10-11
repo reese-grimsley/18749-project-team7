@@ -2,6 +2,8 @@
 
 # used https://realpython.com/python-sockets/
 
+import pickle
+from re import L
 import socket
 import traceback, argparse
 import DebugLogger, constants
@@ -34,35 +36,55 @@ def parse_args():
 
 def application_server_handler(client_socket, client_addr):
     global state_x
+    connected = True
     try:
-        data = client_socket.recv(1024)
-        #TODO: assume the data is a byte/bytearray representation of a class in 'messages.py' that 
-        msg = messages.deserialize(data)
-        #TODO: message dispatcher
-        while data != b'':
-            if constants.MAGIC_MSG_LFD_RESPONSE in data.decode('utf-8'):
-                logger.info("Received from LFD: %s", str(data.decode('utf-8')))
-                respond_to_heartbeat(client_socket)
+        while connected:
+            data = client_socket.recv(constants.MAX_MSG_SIZE) # assume that we will send no message larger than this
+            if data == b'':
+                connected = False
+            #TODO: assume the data is a byte/bytearray representation of a class in 'messages.py' that 
+            msg = None
+            try:
+                msg = messages.deserialize(data)
+            except pickle.UnpicklingError:
+                logger.error("Unexpected Message format; could not deserialize") 
 
-            else:
-                echo(client_socket, data)
-                #TODO: data should be structured
+            #dispatch message handler
+            if isinstance(msg, messages.ClientRequestMessage):
+                logger.critical('Received Message from client: %s', msg)
+                echo(client_socket, msg, extra_data=str(state_x))
                 state_x += 1
                 logger.info("state_x is " + str(state_x))
 
-            data = client_socket.recv(1024)
-    
+            elif isinstance(msg, messages.LFDMessage) and msg.data == constants.MAGIC_MSG_LFD_REQUEST:
+                logger.info("Received from LFD: %s", str(data.decode('utf-8')))
+                respond_to_heartbeat(client_socket)
+
+            else: 
+                logger.info("Received unexpected message; type: [%s]", type(msg))
+            
+        
     finally: 
         client_socket.close()
         logger.info('Closed connection for client at (%s)', client_addr)
 
         
-def echo(client_socket, data):
-    client_socket.sendall(data)
+def echo(client_socket, msg:messages.ClientRequestMessage, extra_data=''):
+    #Copy everything back into the response with virtually no changes
+    if len(extra_data) > 0:
+        response_data = msg.request_data + " : " + extra_data
+
+    response_msg = messages.ClientResponseMessage(msg.client_id, msg.request_number, response_data, msg.server_id)    
+    logger.critical('Reponse to client: %s', response_msg)
+    response_bytes = response_msg.serialize()
+    client_socket.sendall(response_bytes)
 
 
-def respond_to_heartbeat(client_socket, response_msg=constants.MAGIC_MSG_LFD_RESPONSE):
-    client_socket.sendall(response_msg.encode('utf-8'))
+def respond_to_heartbeat(client_socket, response_data=constants.MAGIC_MSG_LFD_RESPONSE):
+    lfd_response_msg = messages.LFDMessage(data=response_data)
+    response_bytes = lfd_response_msg.serialize()
+    client_socket.sendall(response_bytes)
+    #Require ACK?
 
 
 def application_server(ip, port):

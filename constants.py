@@ -25,3 +25,5 @@ QUEUE_TIMEOUT = 5.0 #seconds that reading from a queue will block for before ret
 CLIENT_SERVER_TIMEOUT = 30.0 # seconds that will pass in 'recv' before exiting with a TimeoutError
 
 NULL_SERVER_ID = -1 
+
+MAX_MSG_SIZE = 1350

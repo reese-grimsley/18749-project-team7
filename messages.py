@@ -7,11 +7,17 @@ Each message should have a predefined format when it's turned into a 'bytes' or 
 
 import pickle
 import constants
+import DebugLogger
+
+logger = DebugLogger.get_logger('messages')
 
 def deserialize(data):
     if not isinstance(data, bytes) and not isinstance(data, bytearray):
         raise ValueError("Can only deserialize bytes or bytearray's")
-    return pickle.loads(data)
+    if (len(data)) > constants.MAX_MSG_SIZE:
+        logger.warning('Message to be sent is larger than MAX SIZE [%d] for a single msg', constants.MAX_MSG_SIZE)
+    d =  pickle.loads(data)
+    return d
 
 class Message():
 
@@ -23,9 +29,11 @@ class Message():
         '''
         return bytes or bytearray that can be directly send through a socket
         '''
-        if isinstance(self.data, bytes) or isinstance(self.data, bytearray):
-            return self.data
-        return pickle.dumps(self.data)
+        d =  pickle.dumps(self.data)
+        if (len(d)) > constants.MAX_MSG_SIZE:
+            logger.warning('Message to be sent is larger than MAX SIZE [%d] for a single msg', constants.MAX_MSG_SIZE)
+
+        return d
 
 
 class ClientRequestMessage(Message):
