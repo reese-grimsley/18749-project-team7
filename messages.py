@@ -30,7 +30,7 @@ class Message():
         '''
         return bytes or bytearray that can be directly send through a socket
         '''
-        d =  pickle.dumps(self.data)
+        d =  pickle.dumps(self)
         if (len(d)) > constants.MAX_MSG_SIZE:
             logger.warning('Message to be sent is larger than MAX SIZE [%d] for a single msg', constants.MAX_MSG_SIZE)
 
