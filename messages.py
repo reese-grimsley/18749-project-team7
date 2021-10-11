@@ -16,8 +16,9 @@ def deserialize(data):
         raise ValueError("Can only deserialize bytes or bytearray's")
     if (len(data)) > constants.MAX_MSG_SIZE:
         logger.warning('Message to be sent is larger than MAX SIZE [%d] for a single msg', constants.MAX_MSG_SIZE)
-    d =  pickle.loads(data)
-    return d
+    if len(data) == 0:
+        return None
+    return pickle.loads(data)
 
 class Message():
 
