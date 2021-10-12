@@ -99,7 +99,7 @@ def application_server(ip, port):
 
 if __name__ == "__main__":
     ip, port = parse_args()
-    application_server(ip, port)
-    DebugLogger.setup_file_handler('./app_server_' + ip+':'+port+'.log', level=1)
+    DebugLogger.setup_file_handler('./app_server_' + ip+':'+str(port)+'.log', level=1)
 
+    application_server(ip, port)
     print('done')
