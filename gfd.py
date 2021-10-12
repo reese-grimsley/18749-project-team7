@@ -23,22 +23,34 @@ def parse_args():
     
     return args.ip, args.port, args.heartbeat
 
-
+def print_membership():
+    num = len(membership)
+    members = ""
+    for member in membership:
+        members += "[" + member + "] "       
+    logger.info("GFD: " + str(num) + " member(s) - " + members)
+    
 def register_membership(data):
     response = str(data)
     response_list = response.split()
     server_ip = response_list[len(response_list) - 1]
-    logger.info("Add server " + str(server_ip) + " to membership")
-    membership.append(server_ip) 
-
+    server_id = response_list[len(response_list) - 2]
+    server = str(server_id) + str(server_ip)
+    logger.info("Add " + server + " to membership")
+    membership.append(server) 
+    print_membership()
+    
 def cancel_membership(data):
     response = str(data)
     response_list = response.split()
     server_ip = response_list[len(response_list) - 1]
-    logger.info("Remove " + str(server_ip) + " out membership")
-    if server_ip in membership:
-        membership.remove(server_ip)
-
+    server_id = response_list[len(response_list) - 2]
+    server = str(server_id) + str(server_ip)
+    logger.info("Remove " + server + " out membership")
+    if server in membership:
+        membership.remove(server)
+    print_membership()
+    
 def poke_lfd(conn, period):
     success = False
     try: 
@@ -98,7 +110,7 @@ def start_conn(ip, port, period):
                 thread.start()
 
         except KeyboardInterrupt:
-            logger.critical('Keyboard interrupt in server; exiting')
+            logger.critical('Keyboard interrupt in GFD; exiting')
         except Exception as e:
             logger.error(e)
 
