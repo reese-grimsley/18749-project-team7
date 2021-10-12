@@ -61,7 +61,7 @@ def application_server_handler(client_socket, client_addr):
                 logger.info("state_x is " + str(state_x))
 
             elif isinstance(msg, messages.LFDMessage) and msg.data == constants.MAGIC_MSG_LFD_REQUEST:
-                logger.info("Received from LFD: %s", str(data.decode('utf-8')))
+                logger.info("Received from LFD: %s", msg.data)
                 respond_to_heartbeat(client_socket)
 
             else: 
