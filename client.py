@@ -46,8 +46,11 @@ class ClientConnectedMessage():
     Inform the duplication handler about the status of a connected server. Message is meant to be passed through a queue
     '''
     def __init__(self, server_id, is_connected):
-        self.server_d = server_id
+        self.server_id = server_id
         self.is_connected = is_connected
+
+    def __repr__(self):
+        return '{ClientConnectedMessage: S%d connected:%s}' % (self.server_id, self.is_connected)
 
 class Client:
     def __init__(self, address_info=[], client_id=1):
@@ -181,11 +184,12 @@ class Client:
                                 if response is None:
                                     is_connected = False # assuming if we get no response, that the connection is dead
                                     # if the response didn't come and we kill the connection, we should still send something to the duplication handler so 
-                                    response = messages.ClientResponseMessage(self.client_id, new_request.request_number, '', server_id)
+                                else:
+                                    duplication_handler_queue.put(response)
+
                             except TimeoutError as to:
                                 self.logger.info('client timed out. Kill connection and try again')
                                 is_connected = False
-                            duplication_handler_queue.put(response)
 
                         else:
                             self.logger.warning('Unable to determine what to do with incoming message [%s] in run_client_server_handler for id %d', new_request, server_id)
@@ -215,7 +219,7 @@ class Client:
 
             #TODO: expect ACK? Assume no ACKs for ACKs
 
-            response_data = sock.recv(1024) #TODO: handle scnearios where we send more than 1024 bytes
+            response_data = sock.recv(constants.MAX_MSG_SIZE) #TODO: handle scnearios where we send more than 1024 bytes
 
             if response_data == b'':
                 logger.warning("Nothing received from server; connection may be closed; let's wait a moment and retry")
@@ -261,11 +265,10 @@ class Client:
         kill_signal_received = False
         while not kill_signal_received:
 
-            self.logger.info('here')
             msg = None
             try: 
                 msg = response_queue.get(block=True, timeout=constants.QUEUE_TIMEOUT)
-                logger.debug('Duplication handler received msg: [%s]', msg)
+                self.logger.debug('Duplication handler received msg: [%s]', msg)
 
                 if(isinstance(msg, messages.ClientRequestMessage)):
                     req_no = msg.request_number
@@ -283,7 +286,7 @@ class Client:
                         
                         # It is a duplicate msg if the value of the entry is more than 1
                         if find_dup_resp_msg[req_no] > 1:
-                            logger.critical('request_num %d: Discarded duplicate reply from S%d', req_no, s_id)
+                            self.logger.critical('request_num %d: Discarded duplicate reply from S%d', req_no, s_id)
 
                         #remove the element with req_no as the key from the dictionary 
                         # we no longer need it as all possible duplicates are received if the below condn is satisfied
@@ -306,7 +309,6 @@ class Client:
 
             except queue.Empty: continue
 
-            break;
 
 
 if __name__ == "__main__":

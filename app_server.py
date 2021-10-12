@@ -17,6 +17,7 @@ PORT = constants.DEFAULT_APP_SERVER_PORT
 # The all powerful global variable
 state_x = 0
 
+DebugLogger.set_console_level(30)
 logger = DebugLogger.get_logger('app_server')
 
 def parse_args():
@@ -99,4 +100,6 @@ def application_server(ip, port):
 if __name__ == "__main__":
     ip, port = parse_args()
     application_server(ip, port)
+    DebugLogger.setup_file_handler('./app_server_' + ip+':'+port+'.log', level=1)
+
     print('done')
