@@ -87,6 +87,7 @@ def echo(client_socket, msg:messages.ClientRequestMessage, extra_data=''):
 def respond_to_heartbeat(client_socket, response_data=constants.MAGIC_MSG_LFD_RESPONSE):
     lfd_response_msg = messages.LFDMessage(data=response_data)
     response_bytes = lfd_response_msg.serialize()
+    logger.critical('Received LFD Heartbeat')
     client_socket.sendall(response_bytes)
     #Require ACK?
 
