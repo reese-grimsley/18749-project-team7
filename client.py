@@ -14,7 +14,6 @@ import messages
 
 
 DebugLogger.set_console_level(30)
-DebugLogger.setup_file_handler('./client.log', level=1)
 logger = DebugLogger.get_logger('client')
 
 
@@ -145,6 +144,7 @@ class Client:
             kill_signal_received = False
             while not kill_signal_received:
                 is_connected = False
+                print('check kill?')
                 with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client_socket:
 
                     try: 
@@ -318,6 +318,7 @@ if __name__ == "__main__":
     # addr1 = '127.0.0.1:19618'
     # addr2 = '127.0.0.1:19619'
     # addr3 = '127.0.0.1:19620'
+    DebugLogger.setup_file_handler('./client-'+str(client_id)+'.log', level=1)
     client = Client(address_info=address_info, client_id=client_id)
     logger.info(client.server_addresses)
     client.start_client()
