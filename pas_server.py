@@ -10,6 +10,7 @@ import DebugLogger, constants
 from helper import basic_server, is_valid_ipv4
 import messages
 
+
 # host and port might change
 HOST = constants.LOCAL_HOST # this needs to be outward facing (meaning localhost doesn't work)
 PORT = constants.DEFAULT_APP_SERVER_PORT
