@@ -114,7 +114,7 @@ def serve_lfd(conn, addr, period):
                 register_membership(data)
                 success = True
             elif constants.MAGIC_MSG_RESPONSE_FROM_CLIENT in data:
-                register_client(conn, addr)
+                register_client(data)
                 serve_client(conn)
                 success = True
 

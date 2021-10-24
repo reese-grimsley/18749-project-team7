@@ -80,7 +80,8 @@ class Client:
         self.logger.info("Started client-server threads; \t starting voter/duplication handler-thread")
 
         self.gfd_thread = threading.Thread(target=self.gfd_communicator, args=[self.client_id, self.gfd_ip], daemon=False)
-
+        self.gfd_thread.start()
+        
         self.voter_thread = (threading.Thread(target=self.run_duplication_handler, args=[duplication_handler_queue]), duplication_handler_queue)
         self.voter_thread[0].start()
 
@@ -253,7 +254,7 @@ class Client:
             kill_signal_received = False
             while not kill_signal_received:
                 is_connected = False
-                print('check kill?')
+                print('start GFD')
                 with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client_socket:
 
                     try:
