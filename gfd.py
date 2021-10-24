@@ -5,6 +5,7 @@ import threading
 from helper import is_valid_ipv4
 
 membership = []
+client_membership = []
 logger = DebugLogger.get_logger('gfd')
 
 def parse_args():
@@ -23,10 +24,10 @@ def parse_args():
     
     return args.ip, args.port, args.heartbeat
 
-def print_membership():
-    num = len(membership)
+def print_membership(list):
+    num = len(list)
     members = ""
-    for member in membership:
+    for member in list:
         members += "[" + member + "] "       
     logger.info("GFD: " + str(num) + " member(s) - " + members)
     
@@ -38,7 +39,16 @@ def register_membership(data):
     server = str(server_id) + str(server_ip)
     logger.info("Add " + server + " to membership")
     membership.append(server) 
-    print_membership()
+    print_membership(membership)
+
+def register_client(data):
+    response = str(data)
+    response_list = response.split()
+    client_id = response_list[len(response_list) - 1]
+    client = "C" + str(client_id)
+    logger.info("Add " + client + " to membership")
+    client_membership.append(client)
+    print_membership(client_membership)
     
 def cancel_membership(data):
     response = str(data)
@@ -49,8 +59,28 @@ def cancel_membership(data):
     logger.info("Remove " + server + " out membership")
     if server in membership:
         membership.remove(server)
-    print_membership()
-    
+    print_membership(membership)
+
+def serve_client(conn):
+    prev_list = []
+    while True:
+        if len(membership) > len(prev_list):
+            for connID in membership:
+                if connID not in prev_list:
+                    break
+            msg = constants.MAGIC_MSG_ADD_NEW_SERVER + str(connID)
+            conn.sendall(bytes(msg), encoding='utf-8')
+            prev_list.append(connID)
+        elif len(membership) < len(prev_list):
+            for connID in prev_list:
+                if connID not in membership:
+                    break
+            msg = constants.MAGIC_MSG_REMOVE_SERVER + str(connID)
+            conn.sendall(bytes(msg), encoding='utf-8')
+            prev_list.remove(connID)
+        else:
+            continue
+
 def poke_lfd(conn, period):
     success = False
     try: 
@@ -82,6 +112,10 @@ def serve_lfd(conn, addr, period):
                 success = True
             elif constants.MAGIC_MSG_SERVER_START in data:
                 register_membership(data)
+                success = True
+            elif constants.MAGIC_MSG_RESPONSE_FROM_CLIENT in data:
+                register_client(conn, addr)
+                serve_client(conn)
                 success = True
 
             if not lfd_status:
