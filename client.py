@@ -2,6 +2,9 @@
 
 # used https://realpython.com/python-sockets/
 
+# 10/25 modified by Ting Chen and Chia-chia. Add connection handler between
+# GFD and connectioned
+
 from os import kill
 import socket
 import argparse
@@ -25,6 +28,7 @@ def parse_args():
     parser.add_argument('-i', '--ip', metavar='i', default=constants.CATCH_ALL_IP, help='The IPv4 address of the application server', type=str)
     parser.add_argument('-a', '--addresses_path', metavar='a', default='./server_addresses.txt', help='A path to a file containing a list of IP addresses in IPv4 format with ports')
     parser.add_argument('-c', '--client_id', metavar='c', default=1, help="A client identifier (an integer, for simplicity)", type=int) #could also just be a string
+    parser.add_argument('-gi', '--gfd_ip', metavar='gi', default=constants.ECE_CLUSTER_ONE, help="The address of GFD", type=str)
     args = parser.parse_args()
 
     if args.port < 1024 or args.port > 65535:
@@ -38,7 +42,7 @@ def parse_args():
         address_info = None
         
 
-    return args.ip, args.port, args.client_id, address_info
+    return args.ip, args.port, args.client_id, address_info, args.gfd_ip
 
 class ClientConnectedMessage():
     '''
@@ -52,12 +56,14 @@ class ClientConnectedMessage():
         return '{ClientConnectedMessage: S%d connected:%s}' % (self.server_id, self.is_connected)
 
 class Client:
-    def __init__(self, address_info=[], client_id=1):
+    def __init__(self, address_info=[], client_id=1, gfd_ip=""):
         self.server_addresses = address_info
         self.client_id = client_id
+        self.gfd_ip = gfd_ip
 
         self.server_communicating_threads = [] #will store tuples of form (thread, input-queue, server address)
         self.voter_thread = None # will be tuple of form (thread, input-queue)
+        self.gfd_thread = None
 
         self.logger = DebugLogger.get_logger('client.c-'+str(self.client_id))
 
@@ -75,6 +81,9 @@ class Client:
             t.start()
         
         self.logger.info("Started client-server threads; \t starting voter/duplication handler-thread")
+
+        self.gfd_thread = threading.Thread(target=self.gfd_communicator, args=[self.client_id, self.gfd_ip], daemon=False)
+        self.gfd_thread.start()
         
         self.voter_thread = (threading.Thread(target=self.run_duplication_handler, args=[duplication_handler_queue]), duplication_handler_queue)
         self.voter_thread[0].start()
@@ -242,6 +251,37 @@ class Client:
 
         return response_message
 
+    def gfd_communicator(self, client_id, gfd_ip):
+        while True:
+            port = constants.DEFAULT_GFD_PORT
+            kill_signal_received = False
+            while not kill_signal_received:
+                is_connected = False
+                print('start GFD')
+                with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client_socket:
+                    try:
+                        # client_socket.settimeout(constants.CLIENT_SERVER_TIMEOUT)
+                        client_socket.connect((gfd_ip, port))
+                        client_socket.settimeout(constants.CLIENT_SERVER_TIMEOUT)
+
+                        is_connected = True
+                        logger.info('Connected to GFD %s', gfd_ip)
+                    except Exception:
+                        logger.warning('Failed to connect to GFD %s', gfd_ip)
+                        # print(traceback.format_exc())
+                        is_connected = False
+                    while is_connected and not kill_signal_received:
+                        data = client_socket.recv(1024).decode(encoding='utf-8')
+                        if constants.MAGIC_MSG_GFD_REQUEST in data:
+                            response = constants.MAGIC_MSG_RESPONSE_FROM_CLIENT + str(client_id)
+                            client_socket.sendall(str.encode(response))
+                            logger.info(data)
+                        elif constants.MAGIC_MSG_REMOVE_SERVER in data:
+                            logger.info(data)
+                        elif constants.MAGIC_MSG_ADD_NEW_SERVER in data:
+                            logger.info(data)
+
+
     def run_duplication_handler(self, response_queue:queue.Queue):
         '''
         Response queue will be a queue.Queue. It will receive 4 types of messages
@@ -312,13 +352,13 @@ class Client:
 
 
 if __name__ == "__main__":
-    ip, port, client_id, address_info = parse_args() #won't we need multiple ip, port pairs for each of the replicas? Can pull from config file, CLI, or even RM
+    ip, port, client_id, address_info, gfd_ip = parse_args() #won't we need multiple ip, port pairs for each of the replicas? Can pull from config file, CLI, or even RM
     if len(address_info) == 0:
         address_info.append((1, ip+':'+port))
     # addr1 = '127.0.0.1:19618'
     # addr2 = '127.0.0.1:19619'
     # addr3 = '127.0.0.1:19620'
     DebugLogger.setup_file_handler('./client-'+str(client_id)+'.log', level=1)
-    client = Client(address_info=address_info, client_id=client_id)
+    client = Client(address_info=address_info, client_id=client_id, gfd_ip=gfd_ip)
     logger.info(client.server_addresses)
     client.start_client()

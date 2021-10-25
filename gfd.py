@@ -37,9 +37,10 @@ def register_membership(data):
     server_ip = response_list[len(response_list) - 1]
     server_id = response_list[len(response_list) - 2]
     server = str(server_id) + str(server_ip)
-    logger.info("Add " + server + " to membership")
-    membership.append(server) 
-    print_membership(membership)
+    if server not in membership:
+        logger.info("Add " + server + " to membership")
+        membership.append(server) 
+        print_membership(membership)
 
 def register_client(data):
     response = str(data)
@@ -69,15 +70,17 @@ def serve_client(conn):
                 if connID not in prev_list:
                     break
             msg = constants.MAGIC_MSG_ADD_NEW_SERVER + str(connID)
-            conn.sendall(bytes(msg), encoding='utf-8')
+            conn.sendall(bytes(msg, encoding='utf-8'))
             prev_list.append(connID)
+            print("GFD notify client:" + msg)
         elif len(membership) < len(prev_list):
             for connID in prev_list:
                 if connID not in membership:
                     break
             msg = constants.MAGIC_MSG_REMOVE_SERVER + str(connID)
-            conn.sendall(bytes(msg), encoding='utf-8')
+            conn.sendall(bytes(msg, encoding='utf-8'))
             prev_list.remove(connID)
+            print("GFD notify client:" + msg)
         else:
             continue
 
@@ -105,6 +108,7 @@ def serve_lfd(conn, addr, period):
             data = conn.recv(1024).decode(encoding='utf-8')
             logger.info('Received from LFD %s: [%s]', str(addr), str(data))
 
+            print("going into case")
             if constants.MAGIC_MSG_RESPONSE_FROM_LFD in data:    # if receive lfd heartbeat
                 success = True
             elif constants.MAGIC_MSG_SERVER_FAIL in data:        # if receive server fail message, cancel membership
@@ -114,8 +118,11 @@ def serve_lfd(conn, addr, period):
                 register_membership(data)
                 success = True
             elif constants.MAGIC_MSG_RESPONSE_FROM_CLIENT in data:
+                print("start register client")
                 register_client(data)
+                print("start serve client")
                 serve_client(conn)
+                print("finish client")
                 success = True
 
             if not lfd_status:

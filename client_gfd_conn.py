@@ -256,16 +256,15 @@ class Client:
                 is_connected = False
                 print('start GFD')
                 with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client_socket:
-
                     try:
                         # client_socket.settimeout(constants.CLIENT_SERVER_TIMEOUT)
                         client_socket.connect((gfd_ip, port))
                         client_socket.settimeout(constants.CLIENT_SERVER_TIMEOUT)
 
                         is_connected = True
-                        self.logger.info('Connected to GFD %s', gfd_ip)
+                        logger.info('Connected to GFD %s', gfd_ip)
                     except Exception:
-                        self.logger.warning('Failed to connect to GFD %s', gfd_ip)
+                        logger.warning('Failed to connect to GFD %s', gfd_ip)
                         # print(traceback.format_exc())
                         is_connected = False
                     while is_connected and not kill_signal_received:
@@ -273,7 +272,7 @@ class Client:
                         if constants.MAGIC_MSG_GFD_REQUEST in data:
                             response = constants.MAGIC_MSG_RESPONSE_FROM_CLIENT + str(client_id)
                             client_socket.sendall(str.encode(response))
-                            logger.info("Register GFD!!!")
+                            logger.info(data)
                         elif constants.MAGIC_MSG_REMOVE_SERVER in data:
                             logger.info(data)
                         elif constants.MAGIC_MSG_ADD_NEW_SERVER in data:

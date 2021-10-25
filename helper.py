@@ -55,7 +55,7 @@ def parse_addresses_file(path):
         raise e
 
 
-def basic_server(handler_function, flag, ip=constants.CATCH_ALL_IP, port=constants.DEFAULT_APP_SERVER_PORT, logger=helper_logger, reuse_addr=True, daemonic=True):
+def basic_server(handler_function, ip=constants.CATCH_ALL_IP, port=constants.DEFAULT_APP_SERVER_PORT, logger=helper_logger, reuse_addr=True, daemonic=True):
     '''
     Basic server application. Accepts new connections and forks a thread for that new socket
 
@@ -79,7 +79,7 @@ def basic_server(handler_function, flag, ip=constants.CATCH_ALL_IP, port=constan
                 client_socket, address = server_socket.accept()
                 logger.info('Connected by %s', address)
 
-                thread = threading.Thread(target=handler_function, args=[client_socket, address, flag], daemon=daemonic)
+                thread = threading.Thread(target=handler_function, args=[client_socket, address], daemon=daemonic)
                 thread.start()
 
         except KeyboardInterrupt:

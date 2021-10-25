@@ -173,7 +173,7 @@ def handle_gfd(lfd_socket, server_ip, lfd_id):
             if constants.MAGIC_MSG_GFD_REQUEST in data:
                 response = "LFD" + str(lfd_id) + ": lfd-heartbeat"
                 lfd_socket.sendall(str.encode(response))
-            if server_response == 1:
+            if server_response > 0:
                 logger.info("LFD sends add server request to GFD")
                 response = constants.MAGIC_MSG_SERVER_START + " at S" + str(lfd_id) + ": " + str(server_ip)
                 lfd_socket.sendall(str.encode(response))
