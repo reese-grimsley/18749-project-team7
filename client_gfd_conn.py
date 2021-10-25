@@ -2,9 +2,6 @@
 
 # used https://realpython.com/python-sockets/
 
-# 10/25 modified by Ting Chen and Chia-chia. Add connection handler between
-# GFD and client
-
 from os import kill
 import socket
 import argparse

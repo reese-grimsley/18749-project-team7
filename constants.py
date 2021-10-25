@@ -15,6 +15,9 @@ DEFAULT_HEARTBEAT_PERIOD = 3 # seconds
 
 MAGIC_MSG_GFD_REQUEST = "gfd request lfd-heartbeat" 
 MAGIC_MSG_RESPONSE_FROM_LFD = "lfd sends heartbeat to gfd"
+MAGIC_MSG_RESPONSE_FROM_CLIENT = "client response to gfd heartbeat request "
+MAGIC_MSG_ADD_NEW_SERVER = "gfd add server to client "
+MAGIC_MSG_REMOVE_SERVER = "gfd remove server to client "
 MAGIC_MSG_SERVER_START = "Server started"
 MAGIC_MSG_SERVER_FAIL = "Server failed"
 MAGIC_MSG_LFD_REQUEST_SERVER = "Request for server heartbeat"
