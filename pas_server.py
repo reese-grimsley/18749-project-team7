@@ -105,7 +105,7 @@ def respond_to_heartbeat(client_socket, response_data=constants.MAGIC_MSG_LFD_RE
 
 def passive_application_server(ip, port, flag):
 
-    basic_server(passive_application_server_handler, flag, ip, port, logger=logger, reuse_addr=True, daemonic=True)
+    basic_server(passive_application_server_handler, ip, port, logger=logger, reuse_addr=True, daemonic=True, extra_args=[flag])
 
     logger.info("Echo Server Shutdown\n\n")
 
