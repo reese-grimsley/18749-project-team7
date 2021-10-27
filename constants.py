@@ -29,4 +29,13 @@ CLIENT_SERVER_TIMEOUT = 30.0 # seconds that will pass in 'recv' before exiting w
 
 NULL_SERVER_ID = -1 
 
+#priorities for priorityQueues (all queue elements are of form (priority, object))
+MSG_PRIORITY_MGMT = 0
+MSG_PRIORITY_CONTROL = 1
+MSG_PRIORITY_DATA = 2
+
 MAX_MSG_SIZE = 1350
+
+GFD_ACTION_NEW = 0
+GFD_ACTION_DEAD = 1
+GFD_ACTION_UPDATE = 2

@@ -118,6 +118,24 @@ class LFDMessage(Message):
     def __init__(self, data=constants.MAGIC_MSG_LFD_REQUEST):
         super().__init__(data=data)
 
+class GFDClientMessage(Message):
+    def __init__(self, server_ip, server_port, sid, is_primary=None, action=constants.GFD_ACTION_NEW):
+        '''
+        A message from the GFD to client to inform it of a change in the connections
+
+        The server ip and port should point to an address that the client can reach to setup a connection to the server replica with ID 'sid'
+
+        This message should indicate if the server is acting as a primary or not. If the active replication is being used, this should be 'None'
+
+        The action tells the client if the message is indicating a new replica connection was added (GFD_ACTION_NEW), a replica was taken down (GFD_ACTION_DEAD), or if there is some change in the status, e.g. becoming the new primary (GFD_ACTION_UPDATE)
+        
+        '''
+        self.server_ip = server_ip
+        self.server_port = server_port
+        self.sid = sid
+        self.is_primary = is_primary
+        self.action = action
+
 class KillThreadMessage():
 
     '''
