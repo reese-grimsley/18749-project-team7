@@ -70,7 +70,7 @@ class ClientRequestMessage(Message):
             return None
 
     def __repr__(self):
-        return '{ClientRequestMessage: <C%d, S%d, %d, "%s">}' % (self.client_id, self.server_id, self.request_number, self.request_data)
+        return '{ClientRequestMessage: <C-(%d), S-(%d), req#%d, "%s">}' % (self.client_id, self.server_id, self.request_number, self.request_data)
 
 class ClientResponseMessage(Message):
     '''

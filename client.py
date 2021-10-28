@@ -70,15 +70,15 @@ class Client:
 
     def start_client(self):
         self.logger.info("Starting client")
-        duplication_handler_queue = queue.Queue()
-        request_distributor_queue = queue.Queue()
+        duplication_handler_queue = queue.PriorityQueue()
+        request_distributor_queue = queue.PriorityQueue()
         
 
         # for server_addr in self.server_addresses:
         #     self.logger.info('starting client-server thread for server: %s', server_addr)
         #     ip, port = addr_to_ip_port(server_addr[1])
         #     server_id = server_addr[0]
-        #     message_queue = queue.Queue()
+        #     message_queue = queue.PriorityQueue()
 
         #     t = threading.Thread(target=self.run_client_server_handler, args=[ip,port,server_id, message_queue, duplication_handler_queue], daemon=True)
         #     self.server_communicating_threads.append((t, message_queue, server_addr))
@@ -92,7 +92,7 @@ class Client:
         self.request_distributor_thread = (threading.Thread(target=self.run_request_distributor, args=[request_distributor_queue, duplication_handler_queue], daemon=False), request_distributor_queue)
         self.request_distributor_thread[0].start()
         
-        self.duplication_handler = (threading.Thread(target=self.run_duplication_handler, args=[duplication_handler_queue], daemon=True), duplication_handler_queue)
+        self.duplication_handler = (threading.Thread(target=self.run_duplication_handler, args=[duplication_handler_queue], daemon=False), duplication_handler_queue)
         self.duplication_handler[0].start()
 
 
@@ -108,7 +108,7 @@ class Client:
                 self.logger.info('Sending message #%d [%s] to the servers', request_number, data)
 
                 client_request_message = messages.ClientRequestMessage(self.client_id, request_number, copy.copy(data), constants.NULL_SERVER_ID)
-                self.request_distributor_thread[1].put(client_request_message) 
+                self.request_distributor_thread[1].put((constants.MSG_PRIORITY_DATA, client_request_message))
 
                 request_number += 1
                 time.sleep(.25) #just a quick delay
@@ -122,10 +122,9 @@ class Client:
             # kill the other threads here, then exit. 
             self.logger.info("Attempting to shut down child threads of this client")
             for t in self.server_communicating_threads:
-                killMsg = messages.KillThreadMessage()
-                t[1].put(killMsg)
-            self.duplication_handler[1].put(messages.KillThreadMessage())
-            self.request_distributor_thread[1].put(messages.KillThreadMessage())
+                t[1].put((constants.MSG_PRIORITY_MGMT, messages.KillThreadMessage()))
+            self.duplication_handler[1].put((constants.MSG_PRIORITY_MGMT, messages.KillThreadMessage()))
+            self.request_distributor_thread[1].put((constants.MSG_PRIORITY_MGMT, messages.KillThreadMessage()))
             global kill_switch_engaged
             kill_switch_engaged = True
 
@@ -135,7 +134,7 @@ class Client:
         Take in requests directly from the main user-input thread and send them to all threads managing a connection to a replica and the duplication handler. Keeps track of which server replicas are active and which is the primary
         '''
 
-        assert isinstance(input_queue, queue.Queue) and isinstance(duplication_handler_queue, queue.Queue), "queue objects should be from queue.Queue"
+        assert isinstance(input_queue, queue.PriorityQueue) and isinstance(duplication_handler_queue, queue.PriorityQueue), "queue objects should be from queue.PriorityQueue"
 
         self.logger.info("Started request-distributor thread")
 
@@ -147,7 +146,7 @@ class Client:
             while not kill_signal_received:
                 msg = None
                 try:
-                    msg = input_queue.get(block=True, timeout=constants.QUEUE_TIMEOUT)
+                    msg = input_queue.get(block=True, timeout=constants.QUEUE_TIMEOUT)[1] #entries are tuples of form (priority, msg)
                     self.logger.debug('Request distributor received msg: [%s]', msg)
 
                 except queue.Empty:
@@ -166,7 +165,7 @@ class Client:
                         primary_server_id = msg.server_id
 
                     if connection_msg.is_connected:
-                        if connection_msg.server_id >= 0 and isinstance(connection_msg, queue.Queue): #TODO replace with priority queue
+                        if connection_msg.server_id >= 0 and isinstance(connection_msg.client_input_queue, queue.PriorityQueue): #TODO replace with priority queue
                             connection_handler_info.append((connection_msg.server_id, connection_msg.client_input_queue))
                     else:
                         chi_to_remove = None
@@ -189,11 +188,11 @@ class Client:
 
                         request_msg_copy = copy.deepcopy(msg)
                         request_msg_copy.server_id = server_id
-                        handler_queue.put(request_msg_copy)
+                        handler_queue.put((constants.MSG_PRIORITY_DATA, request_msg_copy))
 
                     initiate_duplicator_msg = copy.deepcopy(msg)
                     initiate_duplicator_msg.server_id = constants.NULL_SERVER_ID #ID doesn't matter here
-                    duplication_handler_queue.put(initiate_duplicator_msg)
+                    duplication_handler_queue.put((constants.MSG_PRIORITY_DATA, initiate_duplicator_msg))
         except Exception as e:
             traceback.print_last()
             self.logger.error(e)
@@ -215,7 +214,7 @@ class Client:
 
         This thread will exit when it receives a kill signal/message through its queue, when a server response times out, or when the socket is closed from the server side
         '''
-        assert isinstance(input_queue, queue.Queue) and isinstance(duplication_handler_queue, queue.Queue), "queue objects should be from queue.Queue"
+        assert isinstance(input_queue, queue.PriorityQueue) and isinstance(duplication_handler_queue, queue.PriorityQueue), "queue objects should be from queue.PriorityQueue"
         try:
             self.logger.info("Client-server handler for ip %s, port %d, S_id %d", ip, port, server_id)
 
@@ -246,7 +245,7 @@ class Client:
                         # read from input queue with small timeout
                         new_request = None
                         try:
-                            new_request = input_queue.get(block=True, timeout=constants.QUEUE_TIMEOUT)
+                            new_request = input_queue.get(block=True, timeout=constants.QUEUE_TIMEOUT)[1] #entries are tuples of form (priority, msg)
                         except queue.Empty:
                             pass #nothing to do. 
 
@@ -266,7 +265,7 @@ class Client:
                                         is_connected = False # assuming if we get no response, that the connection is dead
                                         # if the response didn't come and we kill the connection, we should still send something to the duplication handler so 
                                     else:
-                                        duplication_handler_queue.put(response)
+                                        duplication_handler_queue.put((constants.MSG_PRIORITY_DATA, response))
                                 else:
                                     self.logger.debug("received clientRequestMessage as a non-primary connection. Donut send.")
 
@@ -282,7 +281,7 @@ class Client:
                     self.logger.info("Closing socket to server [%d]", server_id)
                     client_socket.close()
                     # connected_message = ClientConnectedMessage(server_id, False)
-                    # duplication_handler_queue.put(connected_message)
+                    # duplication_handler_queue.put(constants.MSG_PRIORITY_CONTROL, connected_message))
                     time.sleep(1) # short delay before trying to reconnect
         except Exception:
             self.logger.error(traceback.format_exc())
@@ -341,7 +340,7 @@ class Client:
                 try:
                     # client_socket.settimeout(constants.CLIENT_SERVER_TIMEOUT)
                     client_socket.connect((gfd_ip, port))
-                    client_socket.settimeout(constants.CLIENT_SERVER_TIMEOUT)
+                    client_socket.settimeout(constants.CLIENT_SERVER_TIMEOUT) #timeout should be used to 
 
                     is_connected = True
                     self.logger.info('GFD:: Connected at IP:Port  %s:%d', gfd_ip, port)
@@ -353,72 +352,85 @@ class Client:
                 while is_connected and not kill_switch_engaged:
                     try:
                         data = client_socket.recv(1024).decode(encoding='utf-8')
-                        if constants.MAGIC_MSG_GFD_REQUEST in data:
+
+                        if data=='':
+                            self.logger.info("Connection to GFD appears to have died")
+                            is_connected = False
+
+                        elif constants.MAGIC_MSG_GFD_REQUEST in data:
                             response = constants.MAGIC_MSG_RESPONSE_FROM_CLIENT + str(client_id)
                             client_socket.sendall(str.encode(response))
                             self.logger.info(data)
                         elif constants.MAGIC_MSG_REMOVE_SERVER in data:
                             self.logger.info(data)
                             ##send kill signal to thread and ClientConnectedMessage update to request distributor (handler itself should send to duplication handler)
-                            replica_id = 1 #TODO: retrieve from message
+                            server_id = 1 #TODO: retrieve from message
 
                             # Tell everyone that that the replica is no longer active; no longer send requests nor expect responses
-                            client_disconnected_msg = ClientServerConnectionMessage(replica_id, False)
-                            request_distributor_queue.put(copy.copy(client_disconnected_msg)) #copy to avoid any changes that thread could make
-                            duplication_handler_queue.put(copy.copy(client_disconnected_msg))
+                            client_disconnected_msg = ClientServerConnectionMessage(server_id, False)
+                            request_distributor_queue.put((constants.MSG_PRIORITY_CONTROL, copy.copy(client_disconnected_msg))) #copy to avoid any changes that thread could make
+                            duplication_handler_queue.put((constants.MSG_PRIORITY_CONTROL, copy.copy(client_disconnected_msg)))
                             #kil handler thread
                             c_to_remove = None
                             for c in client_server_handlers: #elements of form (client_thread, client_input_queue, server_id)
-                                if c[2] == replica_id:
-                                    c[1].put(messages.KillThreadMessage())
+                                if c[2] == server_id:
+                                    c[1].put((constants.MSG_PRIORITY_MGMT, messages.KillThreadMessage()))
                                     c_to_remove = c
-                                    if primary_server_id == replica_id:
+                                    if primary_server_id == server_id:
                                         self.logger.error("Primary killed without replacement")
                                         primary_server_id = constants.NULL_SERVER_ID
                             if c_to_remove is not None:
-                                self.logger.info("Removing handler thread for replica %d: %s", replica_id, c_to_remove)
+                                self.logger.info("Removing handler thread for replica %d: %s", server_id, c_to_remove)
                                 client_server_handlers.remove(c_to_remove)
-                            else: self.logger.warn("Didn't find replica [%d] to remove??", replica_id)
+                            else: self.logger.warn("Didn't find replica [%d] to remove??", server_id)
 
-                        elif constants.MAGIC_MSG_ADD_NEW_SERVER in data:
+                        elif constants.MAGIC_MSG_ADD_NEW_SERVER in data: 
                             self.logger.info(data)
                             #TODO: retrieve IP, port, ID, and primary status from the message
                             replica_ip = "127.0.0.1"
                             replica_port = constants.DEFAULT_APP_SERVER_PORT
                             server_id = 1
-                            is_primary = False
+                            is_primary = True
+
+                            for csh in client_server_handlers:
+                                if csh[2] == server_id:
+                                    self.logger.warning("Received message to add new server [%d] for one we're already connected to!", server_id)
+                                    csh[1].put((constants.MSG_PRIORITY_MGMT ,messages.KillThreadMessage()))
+                                    client_server_handlers.remove(csh) #this may be unsafe within an iterator
+                                    break
 
                             if is_primary and server_id != primary_server_id:
-                                primary_server_id = replica_id
+                                primary_server_id = server_id
 
-
-                            client_input_queue = queue.Queue()
-                            client_thread = threading.Thread(target=self.run_client_server_handler, args=[replica_ip, replica_port, server_id, client_input_queue, duplication_handler_queue, is_primary])
+                            client_input_queue = queue.PriorityQueue()
+                            client_thread = threading.Thread(target=self.run_client_server_handler, args=[replica_ip, replica_port, server_id, client_input_queue, duplication_handler_queue, is_primary], daemon=True)
                             client_thread.start()
                             client_server_handlers.append((client_thread, client_input_queue, server_id))
 
                             #inform other threads that a new replica is present
-                            client_connected_msg = ClientServerConnectionMessage(replica_id, True, is_primary=is_primary, client_input_queue=client_input_queue)
-                            request_distributor_queue.put(copy.copy(client_connected_msg)) #copy to avoid any changes that thread could make
-                            duplication_handler_queue.put(copy.copy(client_connected_msg))
+                            client_connected_msg = ClientServerConnectionMessage(server_id, True, is_primary=is_primary, client_input_queue=client_input_queue)
+                            request_distributor_queue.put((constants.MSG_PRIORITY_CONTROL, copy.copy(client_connected_msg))) #copy to avoid any changes that thread could make
+                            duplication_handler_queue.put((constants.MSG_PRIORITY_CONTROL, copy.copy(client_connected_msg)))
 
                         else:
                             self.logger.warning("GFD:: Received unexpected data: %s", data)
-
+                        #TODO: add extra case for primary update
                     except socket.timeout:
-                        self.logger.debug('GFD:: Timed out')
+                        pass
+                    except (OSError, socket.error) as e:
                         is_connected = False
 
                     if kill_switch_engaged:
                         self.logger.warning("GFD: gfd_communicator received kill signal; exiting")
 
         for csh in client_server_handlers:
-            csh[1].put(messages.KillThreadMessage())
+            self.logger.info("Kill client: %s", csh)
+            csh[1].put((constants.MSG_PRIORITY_MGMT ,messages.KillThreadMessage()))
         self.logger.info("Exiting thread for GFD")
 
-    def run_duplication_handler(self, response_queue:queue.Queue):
+    def run_duplication_handler(self, response_queue:queue.PriorityQueue):
         '''
-        Response queue will be a queue.Queue. It will receive 4 types of messages
+        Response queue will be a queue.PriorityQueue. It will receive 4 types of messages
         1) A message that says a request has been initiated for the servers. It will contain a request number. Instance of messages.ClientRequestMessage
         2) A message that includes the response from one of the servers. It will contain a request number, the replica number, and the response data. Instance of messages.ClientResponseMessage
         3) A message informing whether a server connection has been successfully created or torn down. Instance ofclient.ClientConnectedMessage
@@ -442,7 +454,7 @@ class Client:
 
             msg = None
             try: 
-                msg = response_queue.get(block=True, timeout=constants.QUEUE_TIMEOUT)
+                msg = response_queue.get(block=True, timeout=constants.QUEUE_TIMEOUT)[1] #entries are tuples of form (priority, msg)
                 self.logger.debug('Duplication handler received msg: [%s]', msg)
 
                 if(isinstance(msg, messages.ClientRequestMessage)):
@@ -455,10 +467,6 @@ class Client:
                     req_no = msg.request_number  
                     s_id = msg.server_id
 
-                    if s_id == primary_server_id:
-                        self.logger.info("Received response from primary: %s", msg.response_data)
-                        find_dup_resp_msg.pop(req_no)
-
                     if req_no in find_dup_resp_msg: 
 
                         #increment to keep track of the number of messages we have got with the same req_no till now
@@ -470,7 +478,7 @@ class Client:
 
                         #remove the element with req_no as the key from the dictionary 
                         # we no longer need it as all possible duplicates are received if the below condn is satisfied
-                        if find_dup_resp_msg[req_no] == num_active_servers:
+                        if find_dup_resp_msg[req_no] == num_active_servers or s_id == primary_server_id:
                             find_dup_resp_msg.pop(req_no)
 
                 # increment active servers as a new server has established connection with the client
@@ -492,7 +500,6 @@ class Client:
             except queue.Empty: continue
 
         self.logger.info("Exiting thread for duplicate handling")
-
 
 
 if __name__ == "__main__":

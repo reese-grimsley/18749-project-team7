@@ -26,8 +26,8 @@ def parse_args():
 
     parser.add_argument('-p', '--port', metavar='p', default=constants.DEFAULT_APP_SERVER_PORT, help='The port that the server will be listening to and that this LFD will access', type=int)
     parser.add_argument('-i', '--ip', metavar='i', default=constants.CATCH_ALL_IP, help='The IP address this server should bind to -- defaults to 0.0.0.0, which will work across any local address', type=str)
-
     parser.add_argument('-f', '--flag', metavar='f', default=1, help='Primary is flag = 0 and Backup is flag = 1', type=int)
+    parser.add_argument('-s', '--server_id', metavar='sid', default=1, type=int, help='Identifier for the server')
     args = parser.parse_args()
 
 
@@ -43,7 +43,7 @@ def parse_args():
    
 
 
-    return args.ip, args.port, args.flag
+    return args.ip, args.port, args.flag, args.server_id
 
 def passive_application_server_handler(client_socket, client_addr, flag):
     global state_x
@@ -104,14 +104,13 @@ def respond_to_heartbeat(client_socket, response_data=constants.MAGIC_MSG_LFD_RE
 
 
 def passive_application_server(ip, port, flag):
-
     basic_server(passive_application_server_handler, ip, port, logger=logger, reuse_addr=True, daemonic=True, extra_args=[flag])
 
     logger.info("Echo Server Shutdown\n\n")
 
 if __name__ == "__main__":
-    ip, port, flag = parse_args()
+    ip, port, flag, server_id = parse_args()
     DebugLogger.setup_file_handler('./app_server_' + ip+':'+str(port)+'.log', level=1)
-
+    #TODO: use the server_id (part of LFD response, check against client requests)
     passive_application_server(ip, port, flag)
     print('done')

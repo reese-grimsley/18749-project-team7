@@ -25,6 +25,7 @@ def parse_args():
 
     parser.add_argument('-p', '--port', metavar='p', default=constants.DEFAULT_APP_SERVER_PORT, help='The port that the server will be listening to and that this LFD will access', type=int)
     parser.add_argument('-i', '--ip', metavar='i', default=constants.CATCH_ALL_IP, help='The IP address this server should bind to -- defaults to 0.0.0.0, which will work across any local address', type=str)
+    parser.add_argument('-s', '--server_id', metavar='sid', default=1, type=int, help='Identifier for the server')
     args = parser.parse_args()
 
     if args.port < 1024 or args.port > 65535:
@@ -33,7 +34,7 @@ def parse_args():
         print(args.ip)
         raise ValueError('The IP address given [%s] is not a valid format', args.ip)
 
-    return args.ip, args.port
+    return args.ip, args.port, args.server_id
 
 def application_server_handler(client_socket, client_addr):
     global state_x
@@ -99,8 +100,8 @@ def application_server(ip, port):
     logger.info("Echo Server Shutdown\n\n")
 
 if __name__ == "__main__":
-    ip, port = parse_args()
+    ip, port, server_id = parse_args()
     DebugLogger.setup_file_handler('./app_server_' + ip+':'+str(port)+'.log', level=1)
-
+    #TODO: use the server ID
     application_server(ip, port)
     print('done')
