@@ -26,3 +26,17 @@ connect backup with the primary servers
 receive checkpoints....x, y, z
 
 
+
+IMPLEMENTATION
+
+We will be having two worker threads W1 and W2.
+
+W1 has the connections corresponding to client side (which consists of LFDs and clients together)
+W2 has the connections corresponding to backup side
+
+W1 works(responds to client's requests) when am_i_quiet is false....
+NOTE: but it will be listening to client's requests even when am_i_quiet is false
+
+W2 works when am_i_quiet is true
+
+
