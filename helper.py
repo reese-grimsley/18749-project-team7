@@ -88,6 +88,76 @@ def basic_server(handler_function, ip=constants.CATCH_ALL_IP, port=constants.DEF
             logger.error(e)
 
 
+def basic_primary_server(handler_function, ip=constants.CATCH_ALL_IP, port=constants.DEFAULT_APP_SERVER_PORT, logger=helper_logger, reuse_addr=True, daemonic=True, extra_args=[]):
+    '''
+    Basic primary server
+    opens two threads and connections with clients and backup
+    '''
+
+    # socket for communicating with clients
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server_socket:
+        try:
+            if reuse_addr:
+                server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1) # More portable to use socket.SO_REUSEADDR than SO_REUSEPORT.
+
+            server_socket.bind((ip, port))
+            server_socket.listen()
+
+            while True:
+                client_socket, address = server_socket.accept()
+                logger.info('Connected by %s', address)
+
+                thread = threading.Thread(target=handler_function, args=[client_socket, address, *extra_args], daemon=daemonic)
+                thread.start()
+
+        except KeyboardInterrupt:
+            logger.critical('Keyboard interrupt in server; exiting')
+        except Exception as e:
+            logger.error(e)
+
+
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client_socket:
+
+        try: 
+            # client_socket.settimeout(constants.CLIENT_SERVER_TIMEOUT)
+            client_socket.connect((ip, port))
+
+            is_connected = True
+            self.logger.info('Connected!')
+
+        except Exception:
+            self.logger.warning('Failed to connect to S%d', server_id)
+            # print(traceback.format_exc())
+            is_connected = False
+
+
+
+def basic_backup_server(handler_function, ip=constants.CATCH_ALL_IP, port=constants.DEFAULT_APP_SERVER_PORT, logger=helper_logger, reuse_addr=True, daemonic=True, extra_args=[]):
+    '''
+    Basic backup server
+    opens one thread and connections with primary
+    '''
+
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server_socket:
+        try:
+            if reuse_addr:
+                server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1) # More portable to use socket.SO_REUSEADDR than SO_REUSEPORT.
+
+            server_socket.bind((ip, port))
+            server_socket.listen()
+
+            while True:
+                client_socket, address = server_socket.accept()
+                logger.info('Connected by %s', address)
+
+                thread = threading.Thread(target=handler_function, args=[client_socket, address, *extra_args], daemon=daemonic)
+                thread.start()
+
+        except KeyboardInterrupt:
+            logger.critical('Keyboard interrupt in server; exiting')
+        except Exception as e:
+            logger.error(e)
+
 
 if __name__ == "__main__":
     ip_addr = '127.0.0.1'

@@ -40,3 +40,11 @@ NOTE: but it will be listening to client's requests even when am_i_quiet is fals
 W2 works when am_i_quiet is true
 
 
+
+New FUNCTIONS added:
+basic_primary_server
+primary_server_handler
+basic_backup_server
+backup_server_handler
+
+
