@@ -51,6 +51,17 @@ def parse_args():
     return args.ip, args.port1, args.port2, args.flag, args.server_id
 
 #TODO: nothing has been changed inside the function yet
+
+#TODO: make this as primary_server_client_side_handler
+
+#TODO: make a new handler called primary_server_backup_side_handler which is from a different thread...that should work when am_i_quiet is true
+
+#TODO: create a checkpoint message as a new msg_type in messages.py
+
+#TODO: keep a checkpoint_msg_count in this handler which can toggle am_i_quiet after crossing a threshold for response messages...also reset checkpoint_msg_count
+
+#? Also should we keep receiving data from client socket (while quiescence is happening) and concatenating these messages into a local queue maintained by pas_server ? Or the client_socket handles this buffering implicitly ? ...talking about the line 69
+
 def primary_server_handler(client_socket, client_addr, flag):
     global state_x
     connected = True
@@ -69,6 +80,8 @@ def primary_server_handler(client_socket, client_addr, flag):
                 except EOFError:
                     logger.error("deserialization reached end of buffer without finishing; data was %d bytes, and we can only handle %d per recv call", len(data), constants.MAX_MSG_SIZE)
                     #If we're hitting this error, then we need to consider sending a length in the first few bytes and looping here until we have received that entire length
+
+                #TODO: do this when am_quiet is false
 
                 #dispatch message handler
                 if isinstance(msg, messages.ClientRequestMessage):
@@ -92,6 +105,13 @@ def primary_server_handler(client_socket, client_addr, flag):
 
 
 #TODO: nothing has been changed inside the function yet
+
+#TODO: make this as backup_server_LFD_handler which will only get LFD messages and will respond to it (as backups dont respond to client messages)
+
+#TODO: make a new handler called backup_server_primary_side_handler which is from a different thread...that should work on receiving checkpoints from the primary server and update local state variables x,y,z based on checkpoint messages
+
+#TODO: toggle the am_i_quiet variable back to false after serving checkpoints
+
 def backup_server_handler(client_socket, client_addr, flag):
     global state_x
     connected = True

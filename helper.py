@@ -93,7 +93,11 @@ def basic_primary_server(handler_function, ip=constants.CATCH_ALL_IP, port=const
     Basic primary server
     opens two threads and connections with clients and backup
     '''
-
+    #TODO:
+    # connect to backup servers here...primary server will be the client to 
+    # backup servers
+    #backup server has to listen to primary server (for checkpoint messages) and LFD on different sockets (and different threads and work in parallel)
+ 
     # socket for communicating with clients
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server_socket:
         try:
