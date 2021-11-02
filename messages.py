@@ -72,6 +72,15 @@ class ClientRequestMessage(Message):
     def __repr__(self):
         return '{ClientRequestMessage: <C-(%d), S-(%d), req#%d, "%s">}' % (self.client_id, self.server_id, self.request_number, self.request_data)
 
+    def __eq__(self, other):
+        return id(other) == id(self)
+
+    def __lt__(self, other):
+        # only necessary to satisify priority queues
+        if not isinstance(other, ClientRequestMessage): return False
+        return self.request_number < other.request_number
+
+
 class ClientResponseMessage(Message):
     '''
     Send from server to client as part of normal request-response flow
@@ -102,6 +111,13 @@ class ClientResponseMessage(Message):
     def __repr__(self):
         return '{ClientResponseMessage: <C%d, S%d, %d, "%s">}' % (self.client_id, self.server_id, self.request_number, self.response_data)
 
+    def __eq__(self, other):
+        return id(other) == id(self)
+
+    def __lt__(self, other):
+        # only necessary to satisify priority queues
+        if not isinstance(other, ClientResponseMessage): return False
+        return self.request_number < other.request_number
 
 class AckMessage(Message):
     '''
@@ -150,6 +166,10 @@ class KillThreadMessage():
     def __init__(self):
         pass
 
+    def __eq__(self, other):
+        return id(self)  == id(other)
+    def __lt__(self, other):
+        return True
 
 
 class CheckpointMessage(Message):

@@ -55,6 +55,10 @@ class ClientServerConnectionMessage():
 
     def __repr__(self):
         return '{ClientConnectedMessage: S%d connected:%s}' % (self.server_id, self.is_connected)
+    def __eq__(self, other):
+        return isinstance(other, ClientServerConnectionMessage) and id(other) == id(self)
+    def __lt__(self, other):
+        if not isinstance(other, ClientServerConnectionMessage): return False
 
 class Client:
     def __init__(self, address_info=[], client_id=1, gfd_ip=""):
