@@ -150,4 +150,42 @@ class KillThreadMessage():
     def __init__(self):
         pass
 
+
+
+class CheckpointMessage(Message):
+    '''
+    Send from client to server as part of normal request-response flow
+    '''
+
+    def __init__(self, primary_server_id, x, y, z):
+        super().__init__()
+        self.x = x
+        self.y = y
+        self.z = z
+        self.primary_server_id = primary_server_id
+
+
+    def serialize(self):
+        '''
+        return bytes or bytearray that can be directly send through a socket
+        '''
+        return pickle.dumps(self)
+
+    #? Not sure whether we need this.
+    '''
+    @classmethod
+    def deserialize(cls, byte_data):
+        assert isinstance(byte_data, bytes) or isinstance(byte_data, bytearray), "We can only deserialize a byte array"
+        #
+        reqMessage = pickle.loads(byte_data)
+        if isinstance(reqMessage, ClientRequestMessage): return reqMessage
+        else: 
+            return None
+    '''        
+
+    def __repr__(self):
+        return 'state_x: %d, state_y: %d, state_z: %d, primary_server_id: %d' % (self.x, self.y, self.z, self.primary_server_id)
+
 # GFD, LFD messages?
+
+

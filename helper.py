@@ -55,7 +55,7 @@ def parse_addresses_file(path):
         raise e
 
 
-def basic_server(handler_function, ip=constants.CATCH_ALL_IP, port=constants.DEFAULT_APP_SERVER_PORT, logger=helper_logger, reuse_addr=True, daemonic=True, extra_args=[]):
+def basic_server(handler_function, ip=constants.CATCH_ALL_IP, port=constants.DEFAULT_APP_SERVER_PORT, logger=helper_logger, reuse_addr=True, daemonic=True):
     '''
     Basic server application. Accepts new connections and forks a thread for that new socket
 
@@ -79,7 +79,7 @@ def basic_server(handler_function, ip=constants.CATCH_ALL_IP, port=constants.DEF
                 client_socket, address = server_socket.accept()
                 logger.info('Connected by %s', address)
 
-                thread = threading.Thread(target=handler_function, args=[client_socket, address, *extra_args], daemon=daemonic)
+                thread = threading.Thread(target=handler_function, args=[client_socket, address], daemon=daemonic)
                 thread.start()
 
         except KeyboardInterrupt:
@@ -88,31 +88,51 @@ def basic_server(handler_function, ip=constants.CATCH_ALL_IP, port=constants.DEF
             logger.error(e)
 
 
-def basic_primary_server(handler_function, ip=constants.CATCH_ALL_IP, port=constants.DEFAULT_APP_SERVER_PORT, logger=helper_logger, reuse_addr=True, daemonic=True, extra_args=[]):
+def basic_primary_server(backup_side_handler, client_side_handler, ip=constants.CATCH_ALL_IP, port1 = constants.DEFAULT_APP_PRIMARY_SERVER_PORT1, port2 = constants.DEFAULT_APP_PRIMARY_SERVER_PORT2, logger=helper_logger, reuse_addr=True, daemonic=True):
     '''
     Basic primary server
-    opens two threads and connections with clients and backup
+    (2 different handler functions)
+    opens n+2 threads and connections with n clients and 2 backups
     '''
     #TODO:
     # connect to backup servers here...primary server will be the client to 
     # backup servers
     #backup server has to listen to primary server (for checkpoint messages) and LFD on different sockets (and different threads and work in parallel)
- 
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client_socket:
+
+        try: 
+            # client_socket.settimeout(constants.CLIENT_SERVER_TIMEOUT)
+            client_socket.connect((ip, port1))
+            
+            #TODO: figure out the args based on the handler_function1
+            thread = threading.Thread(target=backup_side_handler, args=[client_socket, ip], daemon=daemonic)
+            thread.start()        
+
+            self.logger.info('Connected!')
+
+        except Exception:
+            self.logger.warning('Failed to connect to S%d', server_id)
+
+
+
+
     # socket for communicating with clients
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server_socket:
         try:
             if reuse_addr:
                 server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1) # More portable to use socket.SO_REUSEADDR than SO_REUSEPORT.
 
-            server_socket.bind((ip, port))
+            server_socket.bind((ip, port2))
             server_socket.listen()
 
             while True:
+                # client_socket can be a client or a backup
                 client_socket, address = server_socket.accept()
                 logger.info('Connected by %s', address)
-
-                thread = threading.Thread(target=handler_function, args=[client_socket, address, *extra_args], daemon=daemonic)
+                
+                thread = threading.Thread(target=client_side_handler, args=[client_socket, address], daemon=daemonic)
                 thread.start()
+    
 
         except KeyboardInterrupt:
             logger.critical('Keyboard interrupt in server; exiting')
@@ -136,7 +156,7 @@ def basic_primary_server(handler_function, ip=constants.CATCH_ALL_IP, port=const
 
 
 
-def basic_backup_server(handler_function, ip=constants.CATCH_ALL_IP, port=constants.DEFAULT_APP_SERVER_PORT, logger=helper_logger, reuse_addr=True, daemonic=True, extra_args=[]):
+def basic_backup_server(handler_function, ip=constants.CATCH_ALL_IP, port=constants.DEFAULT_APP_SERVER_PORT, logger=helper_logger, reuse_addr=True, daemonic=True):
     '''
     Basic backup server
     opens one thread and connections with primary
@@ -154,7 +174,7 @@ def basic_backup_server(handler_function, ip=constants.CATCH_ALL_IP, port=consta
                 client_socket, address = server_socket.accept()
                 logger.info('Connected by %s', address)
 
-                thread = threading.Thread(target=handler_function, args=[client_socket, address, *extra_args], daemon=daemonic)
+                thread = threading.Thread(target=handler_function, args=[client_socket, address], daemon=daemonic)
                 thread.start()
 
         except KeyboardInterrupt:

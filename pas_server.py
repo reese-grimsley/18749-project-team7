@@ -16,7 +16,12 @@ HOST = constants.LOCAL_HOST # this needs to be outward facing (meaning localhost
 default_ports = [constants.DEFAULT_APP_PRIMARY_SERVER_PORT1, constants.DEFAULT_APP_PRIMARY_SERVER_PORT2]
 
 # The all powerful global variable
+# no more global variable
 state_x = 0
+state_y = 0
+state_z = 0
+am_i_quiet = False
+
 
 DebugLogger.set_console_level(30)
 logger = DebugLogger.get_logger('passive_app_server')
@@ -62,45 +67,100 @@ def parse_args():
 
 #? Also should we keep receiving data from client socket (while quiescence is happening) and concatenating these messages into a local queue maintained by pas_server ? Or the client_socket handles this buffering implicitly ? ...talking about the line 69
 
-def primary_server_handler(client_socket, client_addr, flag):
+def primary_backup_side_handler(client_socket, client_addr, extra_args = []):
     global state_x
+    global state_y
+    global state_z
+    global am_i_quiet
+
     connected = True
     try:
         while connected:
-            if flag == 0:
+            if(am_i_quiet):
+
+                checkpt_message = messages.CheckpointMessage(state_x, state_y, state_z, client_addr)
+
+                client_socket.sendall(str.encode(checkpt_message))
+
+                #check whether ack is received? possibility of deadlock if ack is included
+
+                am_i_quiet = False
+
+        
+    finally: 
+        client_socket.close()
+        logger.info('Closed connection for client at (%s)', client_addr)
+
+
+
+def primary_client_side_handler(client_socket, client_addr):
+    global state_x
+    global state_y
+    global state_z
+    global am_i_quiet
+
+    #local checkpoint freq variable
+    checkpoint_msg_counter = 0
+
+
+
+    connected = True
+    try:
+        while connected:
+            if(not am_i_quiet):
+
                 data = client_socket.recv(constants.MAX_MSG_SIZE) # assume that we will send no message larger than this. Assume no timeout here.
                 if data == b'':
                     connected = False
                 #TODO: assume the data is a byte/bytearray representation of a class in 'messages.py' that 
                 msg = None
+
+
                 try:
                     msg = messages.deserialize(data)
+                    
                 except pickle.UnpicklingError:
                     logger.error("Unexpected Message format; could not deserialize") 
                 except EOFError:
                     logger.error("deserialization reached end of buffer without finishing; data was %d bytes, and we can only handle %d per recv call", len(data), constants.MAX_MSG_SIZE)
                     #If we're hitting this error, then we need to consider sending a length in the first few bytes and looping here until we have received that entire length
 
-                #TODO: do this when am_quiet is false
 
                 #dispatch message handler
                 if isinstance(msg, messages.ClientRequestMessage):
                     logger.critical('Received Message from client: %s', msg)
                     echo(client_socket, msg, extra_data=str(state_x))
-                    state_x += 1
-                    logger.info("state_x is " + str(state_x))
+                    client_id = msg.client_id
+
+                    if client_id == 1:
+                        state_x += 1
+                        logger.info("state_x is " + str(state_x))
+                    elif client_id == 2:
+                        state_y += 1
+                        logger.info("state_y is " + str(state_y))
+                    elif client_id == 3:
+                        state_z += 1    
+                        logger.info("state_z is " + str(state_z)) 
+
+                    checkpoint_msg_counter = (checkpoint_msg_counter + 1)   
+                    if checkpoint_msg_counter == 5:
+                        checkpoint_msg_counter = 0
+                        # go to quiescience
+                        am_i_quiet = True 
+                    
 
                 elif isinstance(msg, messages.LFDMessage) and msg.data == constants.MAGIC_MSG_LFD_REQUEST:
                     logger.info("Received from LFD: %s", msg.data)
-                    respond_to_heartbeat(client_socket)
+                    respond_to_heartbeat(client_socket, 0)
 
                 else: 
                     logger.info("Received unexpected message; type: [%s]", type(msg))
-            
+        
         
     finally: 
         client_socket.close()
         logger.info('Closed connection for client at (%s)', client_addr)
+
 
 
 
@@ -112,39 +172,47 @@ def primary_server_handler(client_socket, client_addr, flag):
 
 #TODO: toggle the am_i_quiet variable back to false after serving checkpoints
 
-def backup_server_handler(client_socket, client_addr, flag):
+def backup_server_handler(client_socket, client_addr):
     global state_x
+    global state_y
+    global state_z
+
     connected = True
     try:
         while connected:
-            if flag == 0:
-                data = client_socket.recv(constants.MAX_MSG_SIZE) # assume that we will send no message larger than this. Assume no timeout here.
-                if data == b'':
-                    connected = False
-                #TODO: assume the data is a byte/bytearray representation of a class in 'messages.py' that 
-                msg = None
-                try:
-                    msg = messages.deserialize(data)
-                except pickle.UnpicklingError:
-                    logger.error("Unexpected Message format; could not deserialize") 
-                except EOFError:
-                    logger.error("deserialization reached end of buffer without finishing; data was %d bytes, and we can only handle %d per recv call", len(data), constants.MAX_MSG_SIZE)
-                    #If we're hitting this error, then we need to consider sending a length in the first few bytes and looping here until we have received that entire length
+            data = client_socket.recv(constants.MAX_MSG_SIZE) # assume that we will send no message larger than this. Assume no timeout here.
+            if data == b'':
+                connected = False
+            #TODO: assume the data is a byte/bytearray representation of a class in 'messages.py' that 
+            msg = None
+            try:
+                msg = messages.deserialize(data)
+            except pickle.UnpicklingError:
+                logger.error("Unexpected Message format; could not deserialize") 
+            except EOFError:
+                logger.error("deserialization reached end of buffer without finishing; data was %d bytes, and we can only handle %d per recv call", len(data), constants.MAX_MSG_SIZE)
+                #If we're hitting this error, then we need to consider sending a length in the first few bytes and looping here until we have received that entire length
 
-                #dispatch message handler
-                if isinstance(msg, messages.ClientRequestMessage):
-                    logger.critical('Received Message from client: %s', msg)
-                    echo(client_socket, msg, extra_data=str(state_x))
-                    state_x += 1
-                    logger.info("state_x is " + str(state_x))
+            #dispatch message handler
+            if isinstance(msg, messages.CheckpointMessage):
+                logger.critical('Received Checkpoint Message from Primary Server: %s', msg.primary_server_id)
 
-                elif isinstance(msg, messages.LFDMessage) and msg.data == constants.MAGIC_MSG_LFD_REQUEST:
-                    logger.info("Received from LFD: %s", msg.data)
-                    respond_to_heartbeat(client_socket)
+                # TODO: enable this if we are implementing ack
+                #echo(client_socket, msg)
 
-                else: 
-                    logger.info("Received unexpected message; type: [%s]", type(msg))
-            
+                state_x = msg.x
+                state_y = msg.y
+                state_z = msg.z
+                logger.info("received checkpoint value of state_x, state_y, state_z is: " + str(state_x) + str(state_y) + str(state_z))
+
+
+            elif isinstance(msg, messages.LFDMessage) and msg.data == constants.MAGIC_MSG_LFD_REQUEST:
+                logger.info("Received from LFD: %s", msg.data)
+                respond_to_heartbeat(client_socket, 1)
+
+            else: 
+                logger.info("Received unexpected message; type: [%s]", type(msg))
+        
         
     finally: 
         client_socket.close()
@@ -162,8 +230,9 @@ def echo(client_socket, msg:messages.ClientRequestMessage, extra_data=''):
     client_socket.sendall(response_bytes)
 
 
-def respond_to_heartbeat(client_socket, response_data=constants.MAGIC_MSG_LFD_RESPONSE):
+def respond_to_heartbeat(client_socket, flag, response_data=constants.MAGIC_MSG_LFD_RESPONSE):
     lfd_response_msg = messages.LFDMessage(data=response_data)
+    lfd_response_msg += str(flag)
     response_bytes = lfd_response_msg.serialize()
     logger.critical('Received LFD Heartbeat')
     client_socket.sendall(response_bytes)
@@ -171,7 +240,7 @@ def respond_to_heartbeat(client_socket, response_data=constants.MAGIC_MSG_LFD_RE
 
 
 def primary_server(ip, port1, port2):
-    basic_primary_server(primary_server_handler, ip, port1, port2, logger=logger, reuse_addr=True, daemonic=True)
+    basic_primary_server(primary_backup_side_handler, primary_client_side_handler, ip, port1, port2, logger=logger, reuse_addr=True, daemonic=True)
 
     logger.info("Primary Server Shutdown\n\n")
 
