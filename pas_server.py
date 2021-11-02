@@ -29,9 +29,9 @@ logger = DebugLogger.get_logger('passive_app_server')
 def parse_args():
     parser = argparse.ArgumentParser(description="Passive Application Server")
 
-    parser.add_argument('-p1', '--port1', metavar='p', default=default_ports[0], help='The port that the server will be listening to and that this LFD will access', type=int)
+    parser.add_argument('-p1', '--port1', metavar='p1', default=default_ports[0], help='The port that the server will be listening to and that this LFD will access', type=int)
 
-    parser.add_argument('-p2', '--port2', metavar='p', default=default_ports[1], help='The port that the server will be listening to and that this LFD will access', type=int)
+    parser.add_argument('-p2', '--port2', metavar='p2', default=default_ports[1], help='The port that the server will be listening to and that this LFD will access', type=int)
 
     parser.add_argument('-i', '--ip', metavar='i', default=constants.CATCH_ALL_IP, help='The IP address this server should bind to -- defaults to 0.0.0.0, which will work across any local address', type=str)
     parser.add_argument('-f', '--flag', metavar='f', default=1, help='Primary is flag = 0 and Backup is flag = 1', type=int)
@@ -232,7 +232,7 @@ def echo(client_socket, msg:messages.ClientRequestMessage, extra_data=''):
 
 def respond_to_heartbeat(client_socket, flag, response_data=constants.MAGIC_MSG_LFD_RESPONSE):
     lfd_response_msg = messages.LFDMessage(data=response_data)
-    lfd_response_msg += str(flag)
+    lfd_response_msg.data += str(flag)
     response_bytes = lfd_response_msg.serialize()
     logger.critical('Received LFD Heartbeat')
     client_socket.sendall(response_bytes)
