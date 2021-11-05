@@ -134,6 +134,34 @@ class LFDMessage(Message):
     def __init__(self, data=constants.MAGIC_MSG_LFD_REQUEST):
         super().__init__(data=data)
 
+class GFDMessage(Message):
+    '''
+    A message for the global fault detector to send to local fault detectors
+    '''
+    def __init__(self, data=constants.MAGIC_MSG_GFD_REQUEST):
+        super().__init__(data=data)
+
+class LFDGFDMessage(Message):
+    '''
+    A message for the local fault detector to send to GFD
+    There are three kinds od action:
+    
+    1. LFD sends heartbeat message to GFD
+    2. LFD sends add Server request to GFD
+    3. LFD sends delete Server request to GFD
+    
+    '''
+    def __init__(self, lfd_id, action, server_ip):
+        if action is constants.LFD_ACTION_HB:
+            data = "LFD" + str(lfd_id) + ": " + constants.MAGIC_MSG_LFD_RESPONSE
+        elif action is constants.LFD_ACTION_ADD_SERVER:
+            data = constants.MAGIC_MSG_SERVER_START + " at S" + str(lfd_id) + ": " + str(server_ip)
+        elif action is constants.LFD_ACTION_RM_SERVER:    
+            data = constants.MAGIC_MSG_SERVER_FAIL + " at S" + str(lfd_id) + ": " + str(server_ip)
+            print(data)
+        super().__init__(data=data)
+
+
 class GFDClientMessage(Message):
     def __init__(self, server_ip, server_port, sid, is_primary=None, action=constants.GFD_ACTION_NEW):
         '''

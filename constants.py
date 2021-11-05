@@ -41,3 +41,7 @@ MAX_MSG_SIZE = 1350
 GFD_ACTION_NEW = 0
 GFD_ACTION_DEAD = 1
 GFD_ACTION_UPDATE = 2
+
+LFD_ACTION_HB = 0              # heartbeat
+LFD_ACTION_ADD_SERVER = 1      # add server request to gfd
+LFD_ACTION_RM_SERVER = 2       # delete server request to gfd

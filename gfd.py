@@ -3,6 +3,7 @@ import socket, argparse, time
 import DebugLogger, constants
 import threading
 from helper import is_valid_ipv4
+import messages
 
 membership = []
 client_membership = []
@@ -102,32 +103,37 @@ def poke_lfd(conn, period):
 def serve_lfd(conn, addr, period):
     try:
         lfd_status = True
+        
         while True:
-            #lfd_status = poke_lfd(conn, period)
-            conn.sendall(bytes(constants.MAGIC_MSG_GFD_REQUEST, encoding='utf-8'))
-            data = conn.recv(1024).decode(encoding='utf-8')
-            logger.info('Received from LFD %s: [%s]', str(addr), str(data))
+            # send GFD request LFD heartbeat to LFD
+            gfd_request = messages.GFDMessage()
+            gfd_request_bytes = gfd_request.serialize()
+            conn.sendall(gfd_request_bytes)
+            
+            response_bytes = conn.recv(constants.MAX_MSG_SIZE)
+            response_msg = messages.deserialize(response_bytes)
+            logger.info('Received from LFD %s: [%s]', str(addr), response_msg.data)
 
-            print("going into case")
-            if constants.MAGIC_MSG_RESPONSE_FROM_LFD in data:    # if receive lfd heartbeat
+            if constants.MAGIC_MSG_RESPONSE_FROM_LFD in response_msg.data:    # if receive lfd heartbeat
                 success = True
-            elif constants.MAGIC_MSG_SERVER_FAIL in data:        # if receive server fail message, cancel membership
-                cancel_membership(data)
+            elif constants.MAGIC_MSG_SERVER_FAIL in response_msg.data:        # if receive server fail message, cancel membership
+                cancel_membership(response_msg.data)
                 success = True
-            elif constants.MAGIC_MSG_SERVER_START in data:
-                register_membership(data)
+            elif constants.MAGIC_MSG_SERVER_START in response_msg.data:
+                register_membership(response_msg.data)
                 success = True
-            elif constants.MAGIC_MSG_RESPONSE_FROM_CLIENT in data:
+            elif constants.MAGIC_MSG_RESPONSE_FROM_CLIENT in response_msg.data:
                 print("start register client")
-                register_client(data)
+                register_client(response_msg.data)
                 print("start serve client")
                 serve_client(conn)
                 print("finish client")
                 success = True
-
+            
             if not lfd_status:
                 logger.debug("Something wrong with lfd")
                 break
+            
             time.sleep(period)
     except Exception as e:
         logger.info("in serve lfd")

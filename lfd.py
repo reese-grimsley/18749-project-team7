@@ -45,10 +45,11 @@ def poke_server(client_socket, lfd_id):
     try: 
         lfd_message = messages.LFDMessage()
         lfd_bytes = lfd_message.serialize()
-        # client_socket.sendall(bytes(constants.MAGIC_MSG_LFD_REQUEST, encoding='utf-8'))
+        
         client_socket.sendall(lfd_bytes)
         response_bytes = client_socket.recv(constants.MAX_MSG_SIZE)
         response_msg = messages.deserialize(response_bytes)
+        
         if constants.MAGIC_MSG_LFD_RESPONSE in response_msg.data:
             logger.info('Received from S' + str(lfd_id) + ' : [%s]', response_msg.data)
             success = True
@@ -63,58 +64,6 @@ def poke_server(client_socket, lfd_id):
         logger.warning('Caught Keyboard Interrupt in local fault detector; exiting')
           
     return success
-
-'''def run_lfd(ip=constants.LOCAL_HOST, port=constants.DEFAULT_APP_SERVER_PORT, period=constants.DEFAULT_HEARTBEAT_PERIOD):
-    logger.info('Running local fault detector... contacting port %d every %.2f seconds', port, period)
-    num_failures = 0
-    num_heartbeats = 0
-
-    try: 
-        client_socket = None
-        while True:
-
-            now = time.time()
-            next_hb = now + period
-
-            # server_good = True
-            # make the request; should finish (timeout) before the next heartbeat needs to occur
-            num_heartbeats += 1
-
-            try: 
-                if client_socket is None:
-                    client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                    client_socket.settimeout(period/2)
-                    client_socket.connect((ip, port))
-
-                server_good = poke_server(client_socket)
-            except Exception as e:
-                logger.debug('Exception caught; assume server is not good..')
-                logger.debug(e)
-                server_good = False
-
-            if server_good:
-                logger.info("Server responded correctly; waiting until next heartbeat")
-            else: 
-                num_failures += 1 #some light instrumentation
-                logger.warning("Server failed to respond; %d failures (of %d heartbeats)", num_failures, num_heartbeats)
-
-                #reset
-                client_socket.close()
-                client_socket = None
-                #TODO: notify global FD (if extant) of failure. 
-                #TODO: trigger main server to reset?
-
-            # wait for the next period
-            time_to_sleep = next_hb - time.time()
-            if time_to_sleep > 0:
-                time.sleep(time_to_sleep)
-
-    except KeyboardInterrupt:
-        logger.warning('Caught Keyboard Interrupt in local fault detector; exiting')
-    except Exception as e:
-        logger.error(e)
-        raise 
-'''
 
 def run_lfd(lfd_socket, period, lfd_id):
     num_failures = 0
@@ -166,22 +115,29 @@ def handle_gfd(lfd_socket, server_ip, lfd_id):
     global server_fail
     try:
         while True:
-            data = lfd_socket.recv(1024).decode(encoding='utf-8')
-            if not data:
+            response_bytes = lfd_socket.recv(constants.MAX_MSG_SIZE)
+            response_msg = messages.deserialize(response_bytes)
+
+            if not response_msg.data:
                 continue
-            logger.info("Received from GFD: [%s]", str(data))
-            if constants.MAGIC_MSG_GFD_REQUEST in data:
-                response = "LFD" + str(lfd_id) + ": lfd-heartbeat"
-                lfd_socket.sendall(str.encode(response))
-            if server_response > 0:
-                logger.info("LFD sends add server request to GFD")
-                response = constants.MAGIC_MSG_SERVER_START + " at S" + str(lfd_id) + ": " + str(server_ip)
-                lfd_socket.sendall(str.encode(response))
+            logger.info("Received from GFD: [%s]", response_msg.data)
+            if server_response == 1:
+                logger.info("Send to GFD: [" + "LFD" + str(lfd_id) + " sends add S" + str(lfd_id) + " request to GFD]")
+                lfd_response = messages.LFDGFDMessage(lfd_id, constants.LFD_ACTION_ADD_SERVER, server_ip)
+                lfd_bytes = lfd_response.serialize()
+                lfd_socket.sendall(lfd_bytes)
             if server_fail is True:
-                logger.info("LFD sends delete server request to GFD")
-                response = constants.MAGIC_MSG_SERVER_FAIL + " at S" + str(lfd_id) + ": " + str(server_ip)
-                lfd_socket.sendall(str.encode(response))
+                logger.info("Send to GFD: [" + "LFD" + str(lfd_id) + " sends delete S" + str(lfd_id) + " request to GFD]")
+                #response = constants.MAGIC_MSG_SERVER_FAIL + " at S" + str(lfd_id) + ": " + str(server_ip)
+                #lfd_socket.sendall(str.encode(response))
+                lfd_response = messages.LFDGFDMessage(lfd_id, constants.LFD_ACTION_RM_SERVER, server_ip)
+                lfd_bytes = lfd_response.serialize()
+                lfd_socket.sendall(lfd_bytes)
                 server_fail = False
+            if constants.MAGIC_MSG_GFD_REQUEST in response_msg.data:
+                lfd_response = messages.LFDGFDMessage(lfd_id, constants.LFD_ACTION_HB, 0)
+                lfd_bytes = lfd_response.serialize()
+                lfd_socket.sendall(lfd_bytes)
                 
     except KeyboardInterrupt:
         logger.warning('Caught Keyboard Interrupt in local fault detector; exiting')
