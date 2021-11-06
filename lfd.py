@@ -11,6 +11,7 @@ import messages
 logger = DebugLogger.get_logger('lfd')
 server_response = 0
 server_fail = False
+server_primary = False
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Local Fault Detector")
@@ -34,7 +35,11 @@ def parse_args():
 
     return args.ip, args.port, args.heartbeat, args.gip, args.gport, args.lfd_id
 
-
+def is_primary(msg):
+    msg_length = len(msg)
+    value = int(msg[msg_length - 1])
+    return True if value == 0 else False
+    
 def poke_server(client_socket, lfd_id):
     '''
     return: True if application server responded as expected
@@ -42,6 +47,7 @@ def poke_server(client_socket, lfd_id):
     #create a new socket every single time; restart from scratch
     success = False
     global server_response
+    global server_primary
     try: 
         lfd_message = messages.LFDMessage()
         lfd_bytes = lfd_message.serialize()
@@ -52,6 +58,7 @@ def poke_server(client_socket, lfd_id):
         
         if constants.MAGIC_MSG_LFD_RESPONSE in response_msg.data:
             logger.info('Received from S' + str(lfd_id) + ' : [%s]', response_msg.data)
+            server_primary = is_primary(response_msg.data)
             success = True
             server_response += 1
             
@@ -113,29 +120,36 @@ def run_lfd(lfd_socket, period, lfd_id):
 def handle_gfd(lfd_socket, server_ip, lfd_id):
     global server_response
     global server_fail
+    global server_primary
+    server_type = "" 
     try:
         while True:
             response_bytes = lfd_socket.recv(constants.MAX_MSG_SIZE)
             response_msg = messages.deserialize(response_bytes)
-
+            
+            if server_primary: 
+                server_type = "Primary"
+            else:
+                server_type = "Backup"
+            
             if not response_msg.data:
                 continue
+                
             logger.info("Received from GFD: [%s]", response_msg.data)
-            if server_response == 1:
+            if server_response > 0 and server_response <= 2:
                 logger.info("Send to GFD: [" + "LFD" + str(lfd_id) + " sends add S" + str(lfd_id) + " request to GFD]")
-                lfd_response = messages.LFDGFDMessage(lfd_id, constants.LFD_ACTION_ADD_SERVER, server_ip)
+                lfd_response = messages.LFDGFDMessage(lfd_id, constants.LFD_ACTION_ADD_SERVER, server_ip, server_type)
                 lfd_bytes = lfd_response.serialize()
                 lfd_socket.sendall(lfd_bytes)
             if server_fail is True:
                 logger.info("Send to GFD: [" + "LFD" + str(lfd_id) + " sends delete S" + str(lfd_id) + " request to GFD]")
-                #response = constants.MAGIC_MSG_SERVER_FAIL + " at S" + str(lfd_id) + ": " + str(server_ip)
-                #lfd_socket.sendall(str.encode(response))
-                lfd_response = messages.LFDGFDMessage(lfd_id, constants.LFD_ACTION_RM_SERVER, server_ip)
+                lfd_response = messages.LFDGFDMessage(lfd_id, constants.LFD_ACTION_RM_SERVER, server_ip, server_type)
                 lfd_bytes = lfd_response.serialize()
                 lfd_socket.sendall(lfd_bytes)
                 server_fail = False
             if constants.MAGIC_MSG_GFD_REQUEST in response_msg.data:
-                lfd_response = messages.LFDGFDMessage(lfd_id, constants.LFD_ACTION_HB, 0)
+                logger.info("Send to GFD: [LFD Heartbeat]")
+                lfd_response = messages.LFDGFDMessage(lfd_id, constants.LFD_ACTION_HB, 0, server_type)
                 lfd_bytes = lfd_response.serialize()
                 lfd_socket.sendall(lfd_bytes)
                 

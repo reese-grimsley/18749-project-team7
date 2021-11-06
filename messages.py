@@ -151,19 +151,20 @@ class LFDGFDMessage(Message):
     3. LFD sends delete Server request to GFD
     
     '''
-    def __init__(self, lfd_id, action, server_ip):
+    def __init__(self, lfd_id, action, server_ip, server_type):
+        
         if action is constants.LFD_ACTION_HB:
             data = "LFD" + str(lfd_id) + ": " + constants.MAGIC_MSG_LFD_RESPONSE
         elif action is constants.LFD_ACTION_ADD_SERVER:
-            data = constants.MAGIC_MSG_SERVER_START + " at S" + str(lfd_id) + ": " + str(server_ip)
+            data = server_type + constants.MAGIC_MSG_SERVER_START + " at S" + str(lfd_id) + " : " + str(server_ip)
         elif action is constants.LFD_ACTION_RM_SERVER:    
-            data = constants.MAGIC_MSG_SERVER_FAIL + " at S" + str(lfd_id) + ": " + str(server_ip)
-            print(data)
+            data = server_type + constants.MAGIC_MSG_SERVER_FAIL + " at S" + str(lfd_id) + " : " + str(server_ip)
+            
         super().__init__(data=data)
 
 
 class GFDClientMessage(Message):
-    def __init__(self, server_ip, server_port, sid, is_primary=None, action=constants.GFD_ACTION_NEW):
+    def __init__(self, server_ip, sid, is_primary=None, action=constants.GFD_ACTION_NEW):
         '''
         A message from the GFD to client to inform it of a change in the connections
 
@@ -174,11 +175,15 @@ class GFDClientMessage(Message):
         The action tells the client if the message is indicating a new replica connection was added (GFD_ACTION_NEW), a replica was taken down (GFD_ACTION_DEAD), or if there is some change in the status, e.g. becoming the new primary (GFD_ACTION_UPDATE)
         
         '''
+        #super().__init__()
         self.server_ip = server_ip
-        self.server_port = server_port
+        #self.server_port = server_port
         self.sid = sid
         self.is_primary = is_primary
         self.action = action
+        data = "S" + str(sid) + ": " + str(server_ip) + ", is primary: " + str(is_primary)
+        super().__init__(data=data)
+        
 
 class KillThreadMessage():
 

@@ -34,10 +34,11 @@ def print_membership(list):
     
 def register_membership(data):
     response = str(data)
-    response_list = response.split()
+    response_list = response.split()                  # split based on spaces
+    server_type = response_list[0]
     server_ip = response_list[len(response_list) - 1]
-    server_id = response_list[len(response_list) - 2]
-    server = str(server_id) + str(server_ip)
+    server_id = response_list[len(response_list) - 3]
+    server = str(server_type) + " " + str(server_id) + " : " + str(server_ip)
     if server not in membership:
         logger.info("Add " + server + " to membership")
         membership.append(server) 
@@ -48,40 +49,62 @@ def register_client(data):
     response_list = response.split()
     client_id = response_list[len(response_list) - 1]
     client = "C" + str(client_id)
-    logger.info("Add " + client + " to membership")
-    client_membership.append(client)
-    print_membership(client_membership)
+    if client not in client_membership:
+        logger.info("Add " + client + " to membership")
+        client_membership.append(client)
+        print_membership(client_membership)
     
 def cancel_membership(data):
     response = str(data)
     response_list = response.split()
+    server_type = response_list[0]
     server_ip = response_list[len(response_list) - 1]
-    server_id = response_list[len(response_list) - 2]
-    server = str(server_id) + str(server_ip)
+    server_id = response_list[len(response_list) - 3]
+    server = str(server_type) + " " + str(server_id) + " : " + str(server_ip)
     logger.info("Remove " + server + " out membership")
     if server in membership:
         membership.remove(server)
     print_membership(membership)
 
+def parse_membership(member):
+    # member format: Primary S1 : 172.19.137.180 
+    member_list = member.split()    # split based on spaces
+    server_type = member_list[0]
+    print(str(server_type))
+    server_ip = member_list[len(member_list) - 1]
+    server_id = member_list[len(member_list) - 3][1]
+    is_primary = True if "Primary" in server_type else False
+    return server_ip, server_id, is_primary
+    
 def serve_client(conn):
     prev_list = []
     while True:
         if len(membership) > len(prev_list):
-            for connID in membership:
-                if connID not in prev_list:
+            for member in membership:
+                if  member not in prev_list:
                     break
-            msg = constants.MAGIC_MSG_ADD_NEW_SERVER + str(connID)
-            conn.sendall(bytes(msg, encoding='utf-8'))
-            prev_list.append(connID)
-            print("GFD notify client:" + msg)
+            #server_ip, sid, is_primary=None, action=constants.GFD_ACTION_NEW
+            server_ip, server_id, is_primary = parse_membership(member)  
+            gfd_msg = messages.GFDClientMessage(server_ip, server_id, is_primary, constants.GFD_ACTION_NEW)
+            logger.info("GFD notify Client: [" + constants.MAGIC_MSG_ADD_NEW_SERVER + gfd_msg.data + "]")
+            gfd_msg_bytes = gfd_msg.serialize()
+            conn.sendall(gfd_msg_bytes)
+            #msg = constants.MAGIC_MSG_ADD_NEW_SERVER + str(connID)
+            #conn.sendall(bytes(msg, encoding='utf-8'))
+            prev_list.append(member)
+
         elif len(membership) < len(prev_list):
-            for connID in prev_list:
-                if connID not in membership:
+            for member in prev_list:
+                if member not in membership:
                     break
-            msg = constants.MAGIC_MSG_REMOVE_SERVER + str(connID)
-            conn.sendall(bytes(msg, encoding='utf-8'))
-            prev_list.remove(connID)
-            print("GFD notify client:" + msg)
+            server_ip, server_id, is_primary = parse_membership(member)  
+            gfd_msg = messages.GFDClientMessage(server_ip, server_id, is_primary, constants.GFD_ACTION_DEAD)
+            gfd_msg_bytes = gfd_msg.serialize()
+            conn.sendall(gfd_msg_bytes)
+            #msg = constants.MAGIC_MSG_REMOVE_SERVER + str(connID)
+            #conn.sendall(bytes(msg, encoding='utf-8'))
+            prev_list.remove(member)
+            logger.info("GFD notify Client: [" + constants.MAGIC_MSG_REMOVE_SERVER + gfd_msg.data + "]")
         else:
             continue
 
@@ -112,17 +135,21 @@ def serve_lfd(conn, addr, period):
             
             response_bytes = conn.recv(constants.MAX_MSG_SIZE)
             response_msg = messages.deserialize(response_bytes)
-            logger.info('Received from LFD %s: [%s]', str(addr), response_msg.data)
-
-            if constants.MAGIC_MSG_RESPONSE_FROM_LFD in response_msg.data:    # if receive lfd heartbeat
+            
+            #logger.info('Received from LFD %s: [%s]', str(addr), response_msg.data)
+            if constants.MAGIC_MSG_LFD_RESPONSE in response_msg.data:    # if receive lfd heartbeat
+                logger.info('Received from LFD %s: [%s]', str(addr), response_msg.data)
                 success = True
             elif constants.MAGIC_MSG_SERVER_FAIL in response_msg.data:        # if receive server fail message, cancel membership
+                logger.info('Received from LFD %s: [%s]', str(addr), response_msg.data)
                 cancel_membership(response_msg.data)
                 success = True
             elif constants.MAGIC_MSG_SERVER_START in response_msg.data:
+                logger.info('Received from LFD %s: [%s]', str(addr), response_msg.data)
                 register_membership(response_msg.data)
                 success = True
             elif constants.MAGIC_MSG_RESPONSE_FROM_CLIENT in response_msg.data:
+                logger.info('Received from Client %s: [%s]', str(addr), response_msg.data)
                 print("start register client")
                 register_client(response_msg.data)
                 print("start serve client")

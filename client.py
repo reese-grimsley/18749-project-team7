@@ -355,20 +355,32 @@ class Client:
                     time.sleep(2)
                 while is_connected and not kill_switch_engaged:
                     try:
-                        data = client_socket.recv(1024).decode(encoding='utf-8')
-
-                        if data=='':
+                        #data = client_socket.recv(1024).decode(encoding='utf-8')
+                        gfd_msg_bytes = client_socket.recv(constants.MAX_MSG_SIZE)
+                        gfd_msg = messages.deserialize(gfd_msg_bytes)
+                        
+                        if not gfd_msg:
                             self.logger.info("Connection to GFD appears to have died")
                             is_connected = False
-
-                        elif constants.MAGIC_MSG_GFD_REQUEST in data:
+                            #continue
+                            
+                        if gfd_msg.data is None:
+                            continue
+                            
+                        logger.info('Received from GFD: [%s]', gfd_msg.data)
+                        data = gfd_msg.data
+                        
+                        if constants.MAGIC_MSG_GFD_REQUEST in gfd_msg.data:
                             response = constants.MAGIC_MSG_RESPONSE_FROM_CLIENT + str(client_id)
-                            client_socket.sendall(str.encode(response))
-                            self.logger.info(data)
-                        elif constants.MAGIC_MSG_REMOVE_SERVER in data:
+                            client_msg = messages.LFDMessage(response)
+                            client_msg_bytes = client_msg.serialize()
+                            client_socket.sendall(client_msg_bytes)
+                            self.logger.info(response)
+                            
+                        elif constants.GFD_ACTION_DEAD is gfd_msg.action:
                             self.logger.info(data)
                             ##send kill signal to thread and ClientConnectedMessage update to request distributor (handler itself should send to duplication handler)
-                            server_id = 1 #TODO: retrieve from message
+                            server_id = int(gfd_msg.sid) #TODO: retrieve from message
 
                             # Tell everyone that that the replica is no longer active; no longer send requests nor expect responses
                             client_disconnected_msg = ClientServerConnectionMessage(server_id, False)
@@ -388,13 +400,17 @@ class Client:
                                 client_server_handlers.remove(c_to_remove)
                             else: self.logger.warn("Didn't find replica [%d] to remove??", server_id)
 
-                        elif constants.MAGIC_MSG_ADD_NEW_SERVER in data: 
-                            self.logger.info(data)
+                        elif constants.GFD_ACTION_NEW is gfd_msg.action: 
+                            self.logger.info(gfd_msg.data)
                             #TODO: retrieve IP, port, ID, and primary status from the message
-                            replica_ip = "127.0.0.1"
+                            #replica_ip = "127.0.0.1"
+                            #replica_port = constants.DEFAULT_APP_SERVER_PORT
+                            #server_id = 1
+                            #is_primary = True
+                            replica_ip = gfd_msg.server_ip
                             replica_port = constants.DEFAULT_APP_SERVER_PORT
-                            server_id = 1
-                            is_primary = True
+                            server_id = int(gfd_msg.sid)
+                            is_primary = gfd_msg.is_primary
 
                             for csh in client_server_handlers:
                                 if csh[2] == server_id:
