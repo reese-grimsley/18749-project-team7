@@ -8,7 +8,8 @@ CATCH_ALL_IP = '0.0.0.0' # Bind to this to accept a connection from anything tha
 DEFAULT_APP_SERVER_PORT = 19618
 DEFAULT_GFD_PORT = 15213
 DEFAULT_APP_PRIMARY_SERVER_PORT1 = 19618
-DEFAULT_APP_PRIMARY_SERVER_PORT2 = 19619
+#DEFAULT_APP_PRIMARY_SERVER_PORT2 = 19619
+DEFAULT_APP_BACKUP_SERVER_PORT = 19620
 
 
 MAGIC_MSG_LFD_REQUEST = "lfd-heartbeat" #in case we want to differentiate based on message to the server. It should get a response, but must not modify state

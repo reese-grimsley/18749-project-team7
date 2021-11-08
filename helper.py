@@ -88,7 +88,7 @@ def basic_server(handler_function, ip=constants.CATCH_ALL_IP, port=constants.DEF
             logger.error(e)
 
 
-def basic_primary_server(backup_side_handler, client_side_handler, ip=constants.CATCH_ALL_IP, port1 = constants.DEFAULT_APP_PRIMARY_SERVER_PORT1, port2 = constants.DEFAULT_APP_PRIMARY_SERVER_PORT2, logger=helper_logger, reuse_addr=True, daemonic=True):
+def basic_primary_server(backup_side_handler, client_side_handler, ip=constants.CATCH_ALL_IP, backup_ip1 = constants.ECE_CLUSTER_TWO, backup_ip2 = constants.ECE_CLUSTER_THREE, backup_port1 = DEFAULT_APP_BACKUP_SERVER_PORT, backup_port2 = DEFAULT_APP_BACKUP_SERVER_PORT,  port2 = constants.DEFAULT_APP_PRIMARY_SERVER_PORT1, logger=helper_logger, reuse_addr=True, daemonic=True):
     '''
     Basic primary server
     (2 different handler functions)
@@ -98,22 +98,37 @@ def basic_primary_server(backup_side_handler, client_side_handler, ip=constants.
     # connect to backup servers here...primary server will be the client to 
     # backup servers
     #backup server has to listen to primary server (for checkpoint messages) and LFD on different sockets (and different threads and work in parallel)
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client_socket:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client_socket1:
 
         try: 
             # client_socket.settimeout(constants.CLIENT_SERVER_TIMEOUT)
-            client_socket.connect((ip, port1))
+            client_socket1.connect((backup_ip1, backup_port1))
             
             #TODO: figure out the args based on the handler_function1
-            thread = threading.Thread(target=backup_side_handler, args=[client_socket, ip], daemon=daemonic)
+            thread = threading.Thread(target=backup_side_handler, args=[client_socket1], daemon=daemonic)
             thread.start()        
 
             self.logger.info('Connected!')
 
         except Exception:
-            self.logger.warning('Failed to connect to S%d', server_id)
+            self.logger.warning('Failed to connect to S%d', backup_ip1)
 
 
+
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client_socket2:
+
+        try: 
+            # client_socket.settimeout(constants.CLIENT_SERVER_TIMEOUT)
+            client_socket2.connect((backup_ip2, backup_port2))
+            
+            #TODO: figure out the args based on the handler_function1
+            thread = threading.Thread(target=backup_side_handler, args=[client_socket2], daemon=daemonic)
+            thread.start()        
+
+            self.logger.info('Connected!')
+
+        except Exception:
+            self.logger.warning('Failed to connect to S%d', backup_ip2)
 
 
     # socket for communicating with clients
@@ -140,23 +155,11 @@ def basic_primary_server(backup_side_handler, client_side_handler, ip=constants.
             logger.error(e)
 
 
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client_socket:
-
-        try: 
-            # client_socket.settimeout(constants.CLIENT_SERVER_TIMEOUT)
-            client_socket.connect((ip, port))
-
-            is_connected = True
-            self.logger.info('Connected!')
-
-        except Exception:
-            self.logger.warning('Failed to connect to S%d', server_id)
-            # print(traceback.format_exc())
-            is_connected = False
 
 
 
-def basic_backup_server(handler_function, ip=constants.CATCH_ALL_IP, port=constants.DEFAULT_APP_SERVER_PORT, logger=helper_logger, reuse_addr=True, daemonic=True):
+
+def basic_backup_server(handler_function, ip=constants.CATCH_ALL_IP, port=constants.DEFAULT_APP_BACKUP_SERVER_PORT, logger=helper_logger, reuse_addr=True, daemonic=True):
     '''
     Basic backup server
     opens one thread and connections with primary

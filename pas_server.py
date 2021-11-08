@@ -55,19 +55,17 @@ def parse_args():
 
     return args.ip, args.port1, args.port2, args.flag, args.server_id
 
-#TODO: nothing has been changed inside the function yet
 
-#TODO: make this as primary_server_client_side_handler
 
-#TODO: make a new handler called primary_server_backup_side_handler which is from a different thread...that should work when am_i_quiet is true
+# make a new handler called primary_server_backup_side_handler which is from a different thread...that should work when am_i_quiet is true
 
-#TODO: create a checkpoint message as a new msg_type in messages.py
+# create a checkpoint message as a new msg_type in messages.py
 
-#TODO: keep a checkpoint_msg_count in this handler which can toggle am_i_quiet after crossing a threshold for response messages...also reset checkpoint_msg_count
+# keep a checkpoint_msg_count in this handler which can toggle am_i_quiet after crossing a threshold for response messages...also reset checkpoint_msg_count
 
 #? Also should we keep receiving data from client socket (while quiescence is happening) and concatenating these messages into a local queue maintained by pas_server ? Or the client_socket handles this buffering implicitly ? ...talking about the line 69
 
-def primary_backup_side_handler(client_socket, client_addr, extra_args = []):
+def primary_backup_side_handler(client_socket):
     global state_x
     global state_y
     global state_z
@@ -77,8 +75,10 @@ def primary_backup_side_handler(client_socket, client_addr, extra_args = []):
     try:
         while connected:
             if(am_i_quiet):
-
-                checkpt_message = messages.CheckpointMessage(state_x, state_y, state_z, client_addr)
+                
+                # for now constants.ECE_CLUSTER_ONE is primary...
+                #later this should be replaced with the primary_id...
+                checkpt_message = messages.CheckpointMessage(state_x, state_y, state_z, constants.ECE_CLUSTER_ONE)
 
                 client_socket.sendall(str.encode(checkpt_message))
 
@@ -164,13 +164,12 @@ def primary_client_side_handler(client_socket, client_addr):
 
 
 
-#TODO: nothing has been changed inside the function yet
 
-#TODO: make this as backup_server_LFD_handler which will only get LFD messages and will respond to it (as backups dont respond to client messages)
+# make this as backup_server_LFD_handler which will only get LFD messages and will respond to it (as backups dont respond to client messages)
 
-#TODO: make a new handler called backup_server_primary_side_handler which is from a different thread...that should work on receiving checkpoints from the primary server and update local state variables x,y,z based on checkpoint messages
+# make a new handler called backup_server_primary_side_handler which is from a different thread...that should work on receiving checkpoints from the primary server and update local state variables x,y,z based on checkpoint messages
 
-#TODO: toggle the am_i_quiet variable back to false after serving checkpoints
+# toggle the am_i_quiet variable back to false after serving checkpoints
 
 def backup_server_handler(client_socket, client_addr):
     global state_x
@@ -240,7 +239,8 @@ def respond_to_heartbeat(client_socket, flag, response_data=constants.MAGIC_MSG_
 
 
 def primary_server(ip, port1, port2):
-    basic_primary_server(primary_backup_side_handler, primary_client_side_handler, ip, port1, port2, logger=logger, reuse_addr=True, daemonic=True)
+    # NOTE: we are using the default ip and ports...not from the user arguments
+    basic_primary_server(primary_backup_side_handler, primary_client_side_handler)
 
     logger.info("Primary Server Shutdown\n\n")
 
