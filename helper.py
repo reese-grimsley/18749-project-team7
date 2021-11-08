@@ -88,7 +88,7 @@ def basic_server(handler_function, ip=constants.CATCH_ALL_IP, port=constants.DEF
             logger.error(e)
 
 
-def basic_primary_server(backup_side_handler, client_side_handler, ip=constants.CATCH_ALL_IP, backup_ip1 = constants.ECE_CLUSTER_TWO, backup_ip2 = constants.ECE_CLUSTER_THREE, backup_port1 = constants.DEFAULT_APP_BACKUP_SERVER_PORT, backup_port2 = constants.DEFAULT_APP_BACKUP_SERVER_PORT,  port2 = constants.DEFAULT_APP_PRIMARY_SERVER_PORT1, logger=helper_logger, reuse_addr=True, daemonic=True):
+def basic_primary_server(backup_side_handler, client_side_handler, logger=helper_logger, ip=constants.CATCH_ALL_IP, backup_ip1 = constants.ECE_CLUSTER_TWO, backup_ip2 = constants.ECE_CLUSTER_THREE, backup_port1 = constants.DEFAULT_APP_BACKUP_SERVER_PORT, backup_port2 = constants.DEFAULT_APP_BACKUP_SERVER_PORT,  port2 = constants.DEFAULT_APP_PRIMARY_SERVER_PORT1, reuse_addr=True, daemonic=True):
     '''
     Basic primary server
     (2 different handler functions)
@@ -108,10 +108,10 @@ def basic_primary_server(backup_side_handler, client_side_handler, ip=constants.
             thread = threading.Thread(target=backup_side_handler, args=[client_socket1], daemon=daemonic)
             thread.start()        
 
-            self.logger.info('Connected!')
+            logger.info('Connected!')
 
         except Exception:
-            self.logger.warning('Failed to connect to S%d', backup_ip1)
+            logger.warning('Failed to connect to S%d', backup_ip1)
 
 
 
@@ -125,10 +125,10 @@ def basic_primary_server(backup_side_handler, client_side_handler, ip=constants.
             thread = threading.Thread(target=backup_side_handler, args=[client_socket2], daemon=daemonic)
             thread.start()        
 
-            self.logger.info('Connected!')
+            logger.info('Connected!')
 
         except Exception:
-            self.logger.warning('Failed to connect to S%d', backup_ip2)
+            logger.warning('Failed to connect to S%d', backup_ip2)
 
 
     # socket for communicating with clients
@@ -159,7 +159,7 @@ def basic_primary_server(backup_side_handler, client_side_handler, ip=constants.
 
 
 
-def basic_backup_server(handler_function, ip=constants.CATCH_ALL_IP, port=constants.DEFAULT_APP_BACKUP_SERVER_PORT, logger=helper_logger, reuse_addr=True, daemonic=True):
+def basic_backup_server(handler_function, logger=helper_logger, ip=constants.CATCH_ALL_IP, port=constants.DEFAULT_APP_BACKUP_SERVER_PORT, reuse_addr=True, daemonic=True):
     '''
     Basic backup server
     opens one thread and connections with primary

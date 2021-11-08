@@ -240,7 +240,7 @@ def respond_to_heartbeat(client_socket, flag, response_data=constants.MAGIC_MSG_
 
 def primary_server(ip, port1, port2):
     # NOTE: we are using the default ip and ports...not from the user arguments
-    basic_primary_server(primary_backup_side_handler, primary_client_side_handler)
+    basic_primary_server(primary_backup_side_handler, primary_client_side_handler, logger)
 
     logger.info("Primary Server Shutdown\n\n")
 
@@ -248,7 +248,7 @@ def primary_server(ip, port1, port2):
 
 def backup_server(ip, port):
     # NOTE: we are using the default ip and ports specified in the handler functions...not from the user arguments
-    basic_backup_server(backup_server_handler)
+    basic_backup_server(backup_server_handler, logger)
 
     logger.info("Backup Server Shutdown\n\n")
 
