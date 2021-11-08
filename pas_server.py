@@ -247,7 +247,8 @@ def primary_server(ip, port1, port2):
 
 
 def backup_server(ip, port):
-    basic_backup_server(backup_server_handler, ip, port, logger=logger, reuse_addr=True, daemonic=True)
+    # NOTE: we are using the default ip and ports specified in the handler functions...not from the user arguments
+    basic_backup_server(backup_server_handler)
 
     logger.info("Backup Server Shutdown\n\n")
 
