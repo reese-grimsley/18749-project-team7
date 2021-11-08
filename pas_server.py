@@ -21,6 +21,7 @@ state_x = 0
 state_y = 0
 state_z = 0
 am_i_quiet = False
+checkpoint_num = 0
 
 
 DebugLogger.set_console_level(30)
@@ -70,15 +71,17 @@ def primary_backup_side_handler(client_socket):
     global state_y
     global state_z
     global am_i_quiet
+    global checkpoint_num
 
     connected = True
     try:
         while connected:
             if(am_i_quiet):
+                checkpoint_num = (checkpoint_num + 1)
                 
                 # for now constants.ECE_CLUSTER_ONE is primary...
                 #later this should be replaced with the primary_id...
-                checkpt_message = messages.CheckpointMessage(state_x, state_y, state_z, constants.ECE_CLUSTER_ONE)
+                checkpt_message = messages.CheckpointMessage(state_x, state_y, state_z, constants.ECE_CLUSTER_ONE, checkpoint_num)
 
                 client_socket.sendall(str.encode(checkpt_message))
 
@@ -175,6 +178,7 @@ def backup_server_handler(client_socket, client_addr):
     global state_x
     global state_y
     global state_z
+    global checkpoint_num
 
     connected = True
     try:
@@ -202,7 +206,8 @@ def backup_server_handler(client_socket, client_addr):
                 state_x = msg.x
                 state_y = msg.y
                 state_z = msg.z
-                logger.info("received checkpoint value of state_x, state_y, state_z is: " + str(state_x) + str(state_y) + str(state_z))
+                checkpoint_num = msg.checkpoint_num
+                logger.info("Received checkpoint: " + str(checkpoint_num) + "checkpoint value of state_x, state_y, state_z is: " + str(state_x) + str(state_y) + str(state_z))
 
 
             elif isinstance(msg, messages.LFDMessage) and msg.data == constants.MAGIC_MSG_LFD_REQUEST:
