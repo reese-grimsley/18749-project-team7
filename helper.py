@@ -88,7 +88,7 @@ def basic_server(handler_function, ip=constants.CATCH_ALL_IP, port=constants.DEF
             logger.error(e)
 
 
-def basic_primary_server(backup_side_handler, client_side_handler, ip=constants.CATCH_ALL_IP, backup_ip1 = constants.ECE_CLUSTER_TWO, backup_ip2 = constants.ECE_CLUSTER_THREE, backup_port1 = DEFAULT_APP_BACKUP_SERVER_PORT, backup_port2 = DEFAULT_APP_BACKUP_SERVER_PORT,  port2 = constants.DEFAULT_APP_PRIMARY_SERVER_PORT1, logger=helper_logger, reuse_addr=True, daemonic=True):
+def basic_primary_server(backup_side_handler, client_side_handler, ip=constants.CATCH_ALL_IP, backup_ip1 = constants.ECE_CLUSTER_TWO, backup_ip2 = constants.ECE_CLUSTER_THREE, backup_port1 = constants.DEFAULT_APP_BACKUP_SERVER_PORT, backup_port2 = constants.DEFAULT_APP_BACKUP_SERVER_PORT,  port2 = constants.DEFAULT_APP_PRIMARY_SERVER_PORT1, logger=helper_logger, reuse_addr=True, daemonic=True):
     '''
     Basic primary server
     (2 different handler functions)
