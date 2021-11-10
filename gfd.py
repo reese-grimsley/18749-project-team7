@@ -85,6 +85,7 @@ def serve_client(conn):
                     break
             #server_ip, sid, is_primary=None, action=constants.GFD_ACTION_NEW
             server_ip, server_id, is_primary = parse_membership(member)  
+            
             gfd_msg = messages.GFDClientMessage(server_ip, server_id, is_primary, constants.GFD_ACTION_NEW)
             logger.info("GFD notify Client: [" + constants.MAGIC_MSG_ADD_NEW_SERVER + gfd_msg.data + "]")
             gfd_msg_bytes = gfd_msg.serialize()
@@ -92,7 +93,7 @@ def serve_client(conn):
             #msg = constants.MAGIC_MSG_ADD_NEW_SERVER + str(connID)
             #conn.sendall(bytes(msg, encoding='utf-8'))
             prev_list.append(member)
-
+            time.sleep(1)
         elif len(membership) < len(prev_list):
             for member in prev_list:
                 if member not in membership:
@@ -107,7 +108,7 @@ def serve_client(conn):
             logger.info("GFD notify Client: [" + constants.MAGIC_MSG_REMOVE_SERVER + gfd_msg.data + "]")
         else:
             continue
-
+        
 def poke_lfd(conn, period):
     success = False
     try: 
