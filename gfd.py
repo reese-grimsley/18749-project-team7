@@ -14,7 +14,7 @@ def parse_args():
 
     parser.add_argument('-p', '--port', metavar='p', default=constants.DEFAULT_GFD_PORT, help='The port that the gfd will be listening to LFD', type=int)
     parser.add_argument('-hb', '--heartbeat', metavar='HB', default=constants.DEFAULT_HEARTBEAT_PERIOD, help='The period between each heartbeat, in seconds', type=float)
-    parser.add_argument('-i', '--ip', metavar='i', default=constants.ECE_CLUSTER_ONE, help='The IP address of the gfd', type=str)
+    parser.add_argument('-i', '--ip', metavar='i', default=constants.ECE_CLUSTER_FOUR, help='The IP address of the gfd', type=str)
 
     args = parser.parse_args()
 

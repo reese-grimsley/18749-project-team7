@@ -4,6 +4,7 @@ LOCAL_HOST = '127.0.0.1'
 ECE_CLUSTER_ONE = 'ece001.ece.local.cmu.edu'
 ECE_CLUSTER_TWO = 'ece002.ece.local.cmu.edu'
 ECE_CLUSTER_THREE = 'ece003.ece.local.cmu.edu'
+ECE_CLUSTER_FOUR = 'ece004.ece.local.cmu.edu'
 CATCH_ALL_IP = '0.0.0.0' # Bind to this to accept a connection from anything that arrives to this machine
 DEFAULT_APP_SERVER_PORT = 19618
 DEFAULT_GFD_PORT = 15213

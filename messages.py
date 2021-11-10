@@ -153,11 +153,11 @@ class LFDGFDMessage(Message):
     '''
     def __init__(self, lfd_id, action, server_ip, server_type):
         
-        if action is constants.LFD_ACTION_HB:
+        if action == constants.LFD_ACTION_HB:
             data = "LFD" + str(lfd_id) + ": " + constants.MAGIC_MSG_LFD_RESPONSE
-        elif action is constants.LFD_ACTION_ADD_SERVER:
+        elif action == constants.LFD_ACTION_ADD_SERVER:
             data = server_type + constants.MAGIC_MSG_SERVER_START + " at S" + str(lfd_id) + " : " + str(server_ip)
-        elif action is constants.LFD_ACTION_RM_SERVER:    
+        elif action == constants.LFD_ACTION_RM_SERVER:    
             data = server_type + constants.MAGIC_MSG_SERVER_FAIL + " at S" + str(lfd_id) + " : " + str(server_ip)
             
         super().__init__(data=data)

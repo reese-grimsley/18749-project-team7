@@ -19,7 +19,7 @@ def parse_args():
     parser.add_argument('-p', '--port', metavar='p', default=constants.DEFAULT_APP_SERVER_PORT, help='The port that the server will be listening to and that this LFD will access', type=int)
     parser.add_argument('-hb', '--heartbeat', metavar='HB', default=constants.DEFAULT_HEARTBEAT_PERIOD, help='The period between each heartbeat, in seconds', type=float)
     parser.add_argument('-i', '--ip', metavar='i', default=constants.LOCAL_HOST, help='The IP address of the application server, which should always be a localhost', type=str)
-    parser.add_argument('-gi', '--gip', metavar='gi', default=constants.ECE_CLUSTER_ONE, help='The IP address of GFD', type=str)
+    parser.add_argument('-gi', '--gip', metavar='gi', default=constants.ECE_CLUSTER_FOUR, help='The IP address of GFD', type=str)
     parser.add_argument('-gp', '--gport', metavar='gp', default=constants.DEFAULT_GFD_PORT, help='The port number of GFD', type=int)
     parser.add_argument('-l', '--lfd_id', metavar='l', default=1, help="A lfd identifier (an integer, for simplicity)", type=int)
     
@@ -132,7 +132,7 @@ def handle_gfd(lfd_socket, server_ip, lfd_id):
             else:
                 server_type = "Backup"
             
-            if not response_msg.data:
+            if not response_msg.data or response_msg.data is None:
                 continue
                 
             logger.info("Received from GFD: [%s]", response_msg.data)

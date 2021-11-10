@@ -24,7 +24,7 @@ def parse_args():
     parser.add_argument('-i', '--ip', metavar='i', default=constants.CATCH_ALL_IP, help='The IPv4 address of the application server', type=str)
     parser.add_argument('-a', '--addresses_path', metavar='a', default='./server_addresses.txt', help='A path to a file containing a list of IP addresses in IPv4 format with ports')
     parser.add_argument('-c', '--client_id', metavar='c', default=1, help="A client identifier (an integer, for simplicity)", type=int) #could also just be a string
-    parser.add_argument('-gi', '--gfd_ip', metavar='gi', default=constants.ECE_CLUSTER_ONE, help="The address of GFD", type=str)
+    parser.add_argument('-gi', '--gfd_ip', metavar='gi', default=constants.ECE_CLUSTER_FOUR, help="The address of GFD", type=str)
     args = parser.parse_args()
 
     if args.port < 1024 or args.port > 65535:
