@@ -169,7 +169,8 @@ def basic_backup_server(handler_function, logger=helper_logger, ip=constants.CAT
         try:
             if reuse_addr:
                 server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1) # More portable to use socket.SO_REUSEADDR than SO_REUSEPORT.
-
+            print(ip)
+            print(port)
             server_socket.bind((ip, port))
             server_socket.listen()
 

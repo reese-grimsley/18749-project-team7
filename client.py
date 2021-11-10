@@ -364,7 +364,7 @@ class Client:
                             is_connected = False
                             #continue
                             
-                        if gfd_msg.data is None:
+                        if gfd_msg is None:
                             continue
                             
                         logger.info('Received from GFD: [%s]', gfd_msg.data)

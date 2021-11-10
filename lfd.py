@@ -158,6 +158,8 @@ def handle_gfd(lfd_socket, server_ip, lfd_id):
     
 def start_conn(ip, port, period, recipient, lfdID):
     conn = False
+    print(ip)
+    print(port)
     try:
         lfd_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         lfd_socket.settimeout(period + 2)
@@ -174,9 +176,11 @@ def start_conn(ip, port, period, recipient, lfdID):
 
     except KeyboardInterrupt:
         logger.warning('Caught Keyboard Interrupt in local fault detector; exiting')
-    except ConnectionRefusedError:
-        start_conn(ip, port, period, recipient)
-
+    '''except ConnectionRefusedError:
+        #start_conn(ip, port, period, recipient, lfdID)
+        #lfd_socket.connect((ip, port))
+        logger.error("connection refused")'''
+        
 if __name__ == "__main__":
     server_ip, server_port, heartbeat_period, gfd_ip, gfd_port, lfd_id = parse_args()
     try:
