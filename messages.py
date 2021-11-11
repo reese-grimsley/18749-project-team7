@@ -210,7 +210,7 @@ class CheckpointMessage(Message):
     Send from client to server as part of normal request-response flow
     '''
 
-    def __init__(self, primary_server_id, x, y, z, checkpoint_num):
+    def __init__(self, x, y, z, primary_server_id, checkpoint_num):
         super().__init__()
         self.x = x
         self.y = y
