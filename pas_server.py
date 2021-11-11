@@ -9,6 +9,8 @@ import traceback, argparse
 import DebugLogger, constants
 from helper import is_valid_ipv4, basic_primary_server, basic_backup_server
 import messages
+import threading
+
 
 
 # host and port might change
@@ -28,6 +30,10 @@ checkpoint_freq = 3
 # triggers checkpoints when no of client messages crosses checkpoint_freq
 checkpoint_msg_counter = 0
 
+
+#lock_variable
+lock_var1 = threading.Lock()
+lock_var2 = threading.Lock()
 
 DebugLogger.set_console_level(30)
 logger = DebugLogger.get_logger('passive_app_server')
@@ -112,7 +118,18 @@ def primary_backup_side_handler(backup_ip, backup_port):
 
                     checkpoint_num = (checkpoint_num + 1)
 
-                    am_i_quiet = False
+
+                    with lock_var1:
+
+                        #critical section
+                        #wait here already in this while loop if already 
+                        # primary server is responding to clients
+                        while not am_i_quiet:
+                            continue 
+                            
+                        am_i_quiet = False
+
+                        
 
             
         finally: 
@@ -130,6 +147,8 @@ def primary_client_side_handler(client_socket, client_addr):
     global am_i_quiet
     global checkpoint_freq
     global checkpoint_msg_counter
+
+    global lock_var2
 
 
     connected = True
@@ -170,11 +189,22 @@ def primary_client_side_handler(client_socket, client_addr):
                         state_z += 1    
                         logger.info("state_z is " + str(state_z)) 
 
-                    checkpoint_msg_counter = (checkpoint_msg_counter + 1)   
-                    if checkpoint_msg_counter == checkpoint_freq:
-                        checkpoint_msg_counter = 0
-                        # go to quiescience
-                        am_i_quiet = True 
+
+                    with lock_var2:
+                        #critical section
+
+                        checkpoint_msg_counter = (checkpoint_msg_counter + 1)   
+                        if checkpoint_msg_counter == checkpoint_freq:
+                            checkpoint_msg_counter = 0
+
+                            #wait here already in this while loop if already in quiescence mode
+                            while am_i_quiet:
+                                continue     
+
+                            # go to quiescience
+                            am_i_quiet = True 
+
+
                     
 
                 elif isinstance(msg, messages.LFDMessage) and msg.data == constants.MAGIC_MSG_LFD_REQUEST:
