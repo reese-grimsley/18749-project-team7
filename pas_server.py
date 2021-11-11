@@ -96,7 +96,9 @@ def primary_backup_side_handler(client_socket):
         
     finally: 
         client_socket.close()
-        logger.info('Closed connection for client at (%s)', client_addr)
+        # for now constants.ECE_CLUSTER_ONE is primary...
+        #later this should be replaced with the primary_id...
+        logger.info('Closed connection for client at (%s)', constants.ECE_CLUSTER_ONE)
 
 
 
