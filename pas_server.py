@@ -31,6 +31,7 @@ checkpoint_freq = 3
 checkpoint_msg_counter = 0
 
 
+
 #lock_variable
 lock_var1 = threading.Lock()
 lock_var2 = threading.Lock()
