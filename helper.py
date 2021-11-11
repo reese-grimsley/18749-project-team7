@@ -65,42 +65,15 @@ def basic_primary_server(backup_side_handler, client_side_handler, logger=helper
     # connect to backup servers here...primary server will be the client to 
     # backup servers
     #backup server has to listen to primary server (for checkpoint messages) and LFD on different sockets (and different threads and work in parallel)
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client_socket1:
 
-        try: 
-            # client_socket.settimeout(constants.CLIENT_SERVER_TIMEOUT)
-            client_socket1.connect((backup_ip1, backup_port1))
-            print('BACKUP 1 IP:'+ str(backup_ip1))
-            print('BACKUP PORT 1:'+ str(backup_port1))
-            
-            #TODO: figure out the args based on the handler_function1
-            thread = threading.Thread(target=backup_side_handler, args=[client_socket1], daemon=daemonic)
-            thread.start()        
-
-            logger.critical('Connected to Backup server 1!')
-
-        except Exception:
-            logger.warning('Failed to connect to Backup server 1 with ip: %d', backup_ip1)
+    thread1 = threading.Thread(target=backup_side_handler, args=[backup_ip1, backup_port1], daemon=daemonic)
+    
+    thread1.start()        
 
 
-
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client_socket2:
-
-        try: 
-            # client_socket.settimeout(constants.CLIENT_SERVER_TIMEOUT)
-            client_socket2.connect((backup_ip2, backup_port2))
-
-            print('BACKUP 2 IP:'+ str(backup_ip2))
-            print('BACKUP PORT 2:'+ str(backup_port2))
-
-            #TODO: figure out the args based on the handler_function1
-            thread = threading.Thread(target=backup_side_handler, args=[client_socket2], daemon=daemonic)
-            thread.start()        
-
-            logger.critical('Connected to Backup server 2!')
-
-        except Exception:
-            logger.warning('Failed to connect to Backup server 2 with ip: %d', backup_ip2)
+    thread2 = threading.Thread(target=backup_side_handler, args=[backup_ip2, backup_port2], daemon=daemonic)
+    
+    thread2.start()            
 
 
     # socket for communicating with clients and LFDs
@@ -113,7 +86,7 @@ def basic_primary_server(backup_side_handler, client_side_handler, logger=helper
             server_socket.listen()
 
             while True:
-                # client_socket can be a client or a backup
+                # client_socket can be a client or a LFD
                 client_socket, address = server_socket.accept()
                 logger.critical('Connected by %s', address)
                 

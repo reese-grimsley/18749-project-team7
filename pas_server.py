@@ -25,6 +25,9 @@ checkpoint_num = 0
 # send checkpoints to the backups for every checkpoint_freq messages received   from the clients
 checkpoint_freq = 3
 
+# triggers checkpoints when no of client messages crosses checkpoint_freq
+checkpoint_msg_counter = 0
+
 
 DebugLogger.set_console_level(30)
 logger = DebugLogger.get_logger('passive_app_server')
@@ -68,37 +71,55 @@ def parse_args():
 
 #? Also should we keep receiving data from client socket (while quiescence is happening) and concatenating these messages into a local queue maintained by pas_server ? Or the client_socket handles this buffering implicitly ? ...talking about the line 69
 
-def primary_backup_side_handler(client_socket):
+def primary_backup_side_handler(backup_ip, backup_port):
     global state_x
     global state_y
     global state_z
     global am_i_quiet
     global checkpoint_num
 
-    connected = True
-    try:
-        while connected:
-            if(am_i_quiet):
-                checkpoint_num = (checkpoint_num + 1)
-                
-                # for now constants.ECE_CLUSTER_ONE is primary...
-                #later this should be replaced with the primary_id...
-                checkpt_message = messages.CheckpointMessage(state_x, state_y, state_z, constants.ECE_CLUSTER_ONE, checkpoint_num)
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client_socket:
 
-                checkpt_msg = checkpt_message.serialize()
+        try: 
+            # client_socket.settimeout(constants.CLIENT_SERVER_TIMEOUT)
+            client_socket.connect((backup_ip, backup_port))
+            print('BACKUP IP:'+ str(backup_ip))
+            print('BACKUP PORT :'+ str(backup_port))
 
-                client_socket.sendall(checkpt_msg)
+            logger.critical('Connected to Backup server!')
 
-                #check whether ack is received? possibility of deadlock if ack is included
+        except Exception:
+            logger.warning('Failed to connect to Backup server with ip: %d', backup_ip)
 
-                am_i_quiet = False
 
-        
-    finally: 
-        client_socket.close()
-        # for now constants.ECE_CLUSTER_ONE is primary...
-        #later this should be replaced with the primary_id...
-        logger.info('Closed connection for client at (%s)', constants.ECE_CLUSTER_ONE)
+
+        connected = True
+        try:
+            while connected:
+                if(am_i_quiet):
+                    
+                    # for now constants.ECE_CLUSTER_ONE is primary...
+                    #later this should be replaced with the primary_id...
+                    checkpt_message = messages.CheckpointMessage(state_x, state_y, state_z, constants.ECE_CLUSTER_ONE, checkpoint_num)
+
+                    checkpt_msg = checkpt_message.serialize()
+
+                    client_socket.sendall(checkpt_msg)
+
+                    logger.critical('Sending checkpoint' + str(checkpoint_num) + ' to Backup servers.....')
+
+                    #check whether ack is received? possibility of deadlock if ack is included
+
+                    checkpoint_num = (checkpoint_num + 1)
+
+                    am_i_quiet = False
+
+            
+        finally: 
+            client_socket.close()
+            # for now constants.ECE_CLUSTER_ONE is primary...
+            #later this should be replaced with the primary_id...
+            logger.info('Closed connection for client at (%s)', constants.ECE_CLUSTER_ONE)
 
 
 
@@ -108,10 +129,7 @@ def primary_client_side_handler(client_socket, client_addr):
     global state_z
     global am_i_quiet
     global checkpoint_freq
-
-    #local checkpoint freq variable
-    checkpoint_msg_counter = 0
-
+    global checkpoint_msg_counter
 
 
     connected = True
@@ -214,7 +232,7 @@ def backup_server_handler(client_socket, client_addr):
                 state_y = msg.y
                 state_z = msg.z
                 checkpoint_num = msg.checkpoint_num
-                logger.info("Received checkpoint: " + str(checkpoint_num) + "checkpoint value of state_x, state_y, state_z is: " + str(state_x) + str(state_y) + str(state_z))
+                logger.critical("Received checkpoint: " + str(checkpoint_num) + " Checkpoint value of state_x, state_y, state_z is: " + str(state_x) + ', ' + str(state_y) + ', '+ str(state_z))
 
 
             elif isinstance(msg, messages.LFDMessage) and msg.data == constants.MAGIC_MSG_LFD_REQUEST:
