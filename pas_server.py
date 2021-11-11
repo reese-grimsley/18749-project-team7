@@ -250,17 +250,19 @@ def respond_to_heartbeat(client_socket, flag, response_data=constants.MAGIC_MSG_
     #Require ACK?
 
 
-def primary_server(ip, port1, port2):
+#def primary_server(ip, port1, port2):
+def primary_server():
     # NOTE: we are using the default ip and ports...not from the user arguments
-    basic_primary_server(primary_backup_side_handler, primary_client_side_handler, logger=logger, ip=ip, backup_ip1=constants.ECE_CLUSTER_TWO, backup_ip2=constants.ECE_CLUSTER_THREE, backup_port1 = constants.DEFAULT_APP_PRIMARY_SERVER_PORT1, backup_port2 = constants.DEFAULT_APP_PRIMARY_SERVER_PORT1,  port2 = constants.DEFAULT_APP_PRIMARY_SERVER_PORT1, reuse_addr=True, daemonic=True)
-    #logger=helper_logger, ip=constants.CATCH_ALL_IP, backup_ip1 = constants.ECE_CLUSTER_TWO, backup_ip2 = constants.ECE_CLUSTER_THREE, backup_port1 = constants.DEFAULT_APP_BACKUP_SERVER_PORT, backup_port2 = constants.DEFAULT_APP_BACKUP_SERVER_PORT,  port2 = constants.DEFAULT_APP_PRIMARY_SERVER_PORT1, reuse_addr=True, daemonic=True
+    basic_primary_server(primary_backup_side_handler, primary_client_side_handler, logger=logger, ip=constants.CATCH_ALL_IP, backup_ip1=constants.ECE_CLUSTER_TWO, backup_ip2=constants.ECE_CLUSTER_THREE, backup_port1 = constants.DEFAULT_APP_BACKUP_SERVER_PORT, backup_port2 = constants.DEFAULT_APP_BACKUP_SERVER_PORT,  port2 = constants.DEFAULT_APP_PRIMARY_SERVER_PORT1, reuse_addr=True, daemonic=True)
+
     logger.info("Primary Server Shutdown\n\n")
 
 
 
-def backup_server(ip, port):
+#def backup_server(ip, port):
+def backup_server():
     # NOTE: we are using the default ip and ports specified in the handler functions...not from the user arguments
-    basic_backup_server(backup_server_handler, logger=logger, ip=ip, port=port, reuse_addr=True, daemonic=True)
+    basic_backup_server(backup_server_handler, logger=logger, ip=constants.CATCH_ALL_IP, port=constants.DEFAULT_APP_BACKUP_SERVER_PORT, reuse_addr=True, daemonic=True)
    
     logger.info("Backup Server Shutdown\n\n")
 
@@ -281,11 +283,13 @@ if __name__ == "__main__":
 
     #primary server
     if flag == 0:
-        primary_server(ip, port1, port2)        
+        primary_server()   
+        #primary_server(ip, port1, port2)        
 
     #backup servers
     else:
-        backup_server(ip, port1) 
+        backup_server()
+        #backup_server(ip, port1) 
 
 
     print('done')

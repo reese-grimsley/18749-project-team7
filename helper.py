@@ -55,39 +55,6 @@ def parse_addresses_file(path):
         raise e
 
 
-def basic_server(handler_function, ip=constants.CATCH_ALL_IP, port=constants.DEFAULT_APP_SERVER_PORT, logger=helper_logger, reuse_addr=True, daemonic=True):
-    '''
-    Basic server application. Accepts new connections and forks a thread for that new socket
-
-    handler_function: A callback function that accepts two arguments: a socket and an address. 
-    ip: The ip this server will bind to. Recommended to use a catch-all (0.0.0.0)
-    port: The port this server will bind to
-    logger: for consitency sake, provide a logger from the module calling this basic_server
-    reuse_addr: tell the server socket to reuse the address or not. If False, it may take 30-90 seconds for the OS to recycle the port.
-    daemonic: boolean indicating if client-handling threads should be 'daemons' or not. The main distinction is that daemonic threads run in the background will be killed when all non-daemon are dead (helpful for removing straggler client threads when the main process shuts down)
-    '''
-
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server_socket:
-        try:
-            if reuse_addr:
-                server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1) # More portable to use socket.SO_REUSEADDR than SO_REUSEPORT.
-
-            server_socket.bind((ip, port))
-            server_socket.listen()
-
-            while True:
-                client_socket, address = server_socket.accept()
-                logger.info('Connected by %s', address)
-
-                thread = threading.Thread(target=handler_function, args=[client_socket, address], daemon=daemonic)
-                thread.start()
-
-        except KeyboardInterrupt:
-            logger.critical('Keyboard interrupt in server; exiting')
-        except Exception as e:
-            logger.error(e)
-
-
 def basic_primary_server(backup_side_handler, client_side_handler, logger=helper_logger, ip=constants.CATCH_ALL_IP, backup_ip1 = constants.ECE_CLUSTER_TWO, backup_ip2 = constants.ECE_CLUSTER_THREE, backup_port1 = constants.DEFAULT_APP_BACKUP_SERVER_PORT, backup_port2 = constants.DEFAULT_APP_BACKUP_SERVER_PORT,  port2 = constants.DEFAULT_APP_PRIMARY_SERVER_PORT1, reuse_addr=True, daemonic=True):
     '''
     Basic primary server
@@ -103,15 +70,17 @@ def basic_primary_server(backup_side_handler, client_side_handler, logger=helper
         try: 
             # client_socket.settimeout(constants.CLIENT_SERVER_TIMEOUT)
             client_socket1.connect((backup_ip1, backup_port1))
+            print('BACKUP 1 IP:'+ str(backup_ip1))
+            print('BACKUP PORT 1:'+ str(backup_port1))
             
             #TODO: figure out the args based on the handler_function1
             thread = threading.Thread(target=backup_side_handler, args=[client_socket1], daemon=daemonic)
             thread.start()        
 
-            logger.info('Connected!')
+            logger.critical('Connected to Backup server 1!')
 
         except Exception:
-            logger.warning('Failed to connect to S%d', backup_ip1)
+            logger.warning('Failed to connect to Backup server 1 with ip: %d', backup_ip1)
 
 
 
@@ -120,18 +89,21 @@ def basic_primary_server(backup_side_handler, client_side_handler, logger=helper
         try: 
             # client_socket.settimeout(constants.CLIENT_SERVER_TIMEOUT)
             client_socket2.connect((backup_ip2, backup_port2))
-            
+
+            print('BACKUP 2 IP:'+ str(backup_ip2))
+            print('BACKUP PORT 2:'+ str(backup_port2))
+
             #TODO: figure out the args based on the handler_function1
             thread = threading.Thread(target=backup_side_handler, args=[client_socket2], daemon=daemonic)
             thread.start()        
 
-            logger.info('Connected!')
+            logger.critical('Connected to Backup server 2!')
 
         except Exception:
-            logger.warning('Failed to connect to S%d', backup_ip2)
+            logger.warning('Failed to connect to Backup server 2 with ip: %d', backup_ip2)
 
 
-    # socket for communicating with clients
+    # socket for communicating with clients and LFDs
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server_socket:
         try:
             if reuse_addr:
@@ -143,7 +115,7 @@ def basic_primary_server(backup_side_handler, client_side_handler, logger=helper
             while True:
                 # client_socket can be a client or a backup
                 client_socket, address = server_socket.accept()
-                logger.info('Connected by %s', address)
+                logger.critical('Connected by %s', address)
                 
                 thread = threading.Thread(target=client_side_handler, args=[client_socket, address], daemon=daemonic)
                 thread.start()
@@ -153,8 +125,6 @@ def basic_primary_server(backup_side_handler, client_side_handler, logger=helper
             logger.critical('Keyboard interrupt in server; exiting')
         except Exception as e:
             logger.error(e)
-
-
 
 
 
@@ -176,7 +146,7 @@ def basic_backup_server(handler_function, logger=helper_logger, ip=constants.CAT
 
             while True:
                 client_socket, address = server_socket.accept()
-                logger.info('Connected by %s', address)
+                logger.critical('Connected by %s', address)
 
                 thread = threading.Thread(target=handler_function, args=[client_socket, address], daemon=daemonic)
                 thread.start()
@@ -187,6 +157,7 @@ def basic_backup_server(handler_function, logger=helper_logger, ip=constants.CAT
             logger.error(e)
 
 
+'''
 if __name__ == "__main__":
     ip_addr = '127.0.0.1'
     port = constants.DEFAULT_APP_SERVER_PORT
@@ -201,5 +172,6 @@ if __name__ == "__main__":
         cs.close()
 
     basic_server(handler_f, ip_addr, port)
+'''    
 
     
