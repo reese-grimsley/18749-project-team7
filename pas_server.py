@@ -22,6 +22,8 @@ state_y = 0
 state_z = 0
 am_i_quiet = False
 checkpoint_num = 0
+# send checkpoints to the backups for every checkpoint_freq messages received   from the clients
+checkpoint_freq = 3
 
 
 DebugLogger.set_console_level(30)
@@ -83,7 +85,9 @@ def primary_backup_side_handler(client_socket):
                 #later this should be replaced with the primary_id...
                 checkpt_message = messages.CheckpointMessage(state_x, state_y, state_z, constants.ECE_CLUSTER_ONE, checkpoint_num)
 
-                client_socket.sendall(str.encode(checkpt_message))
+                checkpt_msg = checkpt_message.serialize()
+
+                client_socket.sendall(checkpt_msg)
 
                 #check whether ack is received? possibility of deadlock if ack is included
 
@@ -101,6 +105,7 @@ def primary_client_side_handler(client_socket, client_addr):
     global state_y
     global state_z
     global am_i_quiet
+    global checkpoint_freq
 
     #local checkpoint freq variable
     checkpoint_msg_counter = 0
@@ -146,7 +151,7 @@ def primary_client_side_handler(client_socket, client_addr):
                         logger.info("state_z is " + str(state_z)) 
 
                     checkpoint_msg_counter = (checkpoint_msg_counter + 1)   
-                    if checkpoint_msg_counter == 5:
+                    if checkpoint_msg_counter == checkpoint_freq:
                         checkpoint_msg_counter = 0
                         # go to quiescience
                         am_i_quiet = True 
