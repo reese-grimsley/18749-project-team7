@@ -23,6 +23,8 @@ state_x = 0
 state_y = 0
 state_z = 0
 am_i_quiet = False
+num_backups = 0
+num_backups_checkpointing = 0
 checkpoint_num = 0
 # send checkpoints to the backups for every checkpoint_freq messages received   from the clients
 checkpoint_freq = 3
@@ -33,8 +35,12 @@ checkpoint_msg_counter = 0
 
 
 #lock_variable
-lock_var1 = threading.Lock()
-lock_var2 = threading.Lock()
+# lock_var1 = threading.Lock()
+# lock_var2 = threading.Lock() #only need one of these for the shared resource 'am_i_quiet'
+
+#concurrency primitives -Reese
+num_backups_lock = threading.Lock() #control number of backups and number of them checkpointing. 
+quiescence_cond_var = threading.Condition() #will create its own lock.
 
 DebugLogger.set_console_level(30)
 logger = DebugLogger.get_logger('passive_app_server')
@@ -68,7 +74,24 @@ def parse_args():
 
     return args.ip, args.port1, args.port2, args.flag, args.server_id
 
+def finished_checkpointing():
+    '''
+    Quick helper function to determine if all backups have completed their checkpointing. 
 
+    Looks at a shared global variable that is expected to set to N (for N backups) at the start of quiescence
+        And as each completes their checkpointing, they decrement this value.
+
+    This function intended for use as a predicate in threading.Condition variable
+    '''
+    global num_backups_checkpointing
+    global num_backups_lock
+
+    num_backups_lock.acquire()
+    finished = num_backups_checkpointing <= 0
+    num_backups_lock.release()
+
+    # include lock require and release?
+    return finished
 
 # make a new handler called primary_server_backup_side_handler which is from a different thread...that should work when am_i_quiet is true
 
@@ -84,6 +107,18 @@ def primary_backup_side_handler(backup_ip, backup_port):
     global state_z
     global am_i_quiet
     global checkpoint_num
+
+    #concurrency primitives -Reese
+    global num_backups
+    global num_backups_checkpointing
+    global num_backups_lock
+    global quiescence_cond_var
+
+    # safely increase number of backups -Reese
+    num_backups_lock.acquire()
+    num_backups += 1
+    num_backups_lock.release()
+
 
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client_socket:
 
@@ -103,8 +138,10 @@ def primary_backup_side_handler(backup_ip, backup_port):
         connected = True
         try:
             while connected:
-                if(am_i_quiet):
-                    
+                try:
+                    quiescence_cond_var.wait(timeout=10) #timeout to help with responsiveness
+                    # if(am_i_quiet): #replacing global control flag with threading primitives -Reese
+                        
                     # for now constants.ECE_CLUSTER_ONE is primary...
                     #later this should be replaced with the primary_id...
                     checkpt_message = messages.CheckpointMessage(state_x, state_y, state_z, constants.ECE_CLUSTER_ONE, checkpoint_num)
@@ -119,21 +156,33 @@ def primary_backup_side_handler(backup_ip, backup_port):
 
                     checkpoint_num = (checkpoint_num + 1)
 
+                    # Signal one less backup is still checkpoint -Reese
+                    num_backups_lock.acquire()
+                    num_backups_checkpointing = max(num_backups_checkpointing - 1, 0) #ensure we never go negative
+                    num_backups_lock.release()
 
-                    with lock_var1:
+                    ## No longer needed -Reese
+                    # with lock_var1:
 
-                        #critical section
-                        #wait here already in this while loop if already 
-                        # primary server is responding to clients
-                        while not am_i_quiet:
-                            continue 
+                    #     #critical section
+                    #     #wait here already in this while loop if already 
+                    #     # primary server is responding to clients
+                    #     while not am_i_quiet:
+                    #         continue 
                             
-                        am_i_quiet = False
-
+                    #     am_i_quiet = False
+                except TimeoutError: pass # no need to react; just keep going
                         
 
             
         finally: 
+            # safely decrement number of backups known.  -Reese
+            # ##Assume this 'finally' covers all failure modes in which the backup is lost.
+            num_backups_lock.acquire()
+            num_backups = max(num_backups - 1, 0)
+            num_backups_checkpointing = max(num_backups_checkpointing - 1, 0)
+            num_backups_lock.release()
+
             client_socket.close()
             # for now constants.ECE_CLUSTER_ONE is primary...
             #later this should be replaced with the primary_id...
@@ -149,71 +198,94 @@ def primary_client_side_handler(client_socket, client_addr):
     global checkpoint_freq
     global checkpoint_msg_counter
 
-    global lock_var2
+    # global lock_var2
 
+    #concurrency primitives -Reese
+    global num_backups
+    global num_backups_checkpointing
+    global num_backups_lock
+    global quiescence_cond_var
 
+    quiescence_cond_var.acquire()
     connected = True
     try:
         while connected:
-            if(not am_i_quiet):
+            # if(not am_i_quiet): # replacing with more consistent concurrency mechanisms -Reese
 
-                data = client_socket.recv(constants.MAX_MSG_SIZE) # assume that we will send no message larger than this. Assume no timeout here.
-                if data == b'':
-                    connected = False
-                #TODO: assume the data is a byte/bytearray representation of a class in 'messages.py' that 
-                msg = None
-
-
-                try:
-                    msg = messages.deserialize(data)
-                    
-                except pickle.UnpicklingError:
-                    logger.error("Unexpected Message format; could not deserialize") 
-                except EOFError:
-                    logger.error("deserialization reached end of buffer without finishing; data was %d bytes, and we can only handle %d per recv call", len(data), constants.MAX_MSG_SIZE)
-                    #If we're hitting this error, then we need to consider sending a length in the first few bytes and looping here until we have received that entire length
+            data = client_socket.recv(constants.MAX_MSG_SIZE) # assume that we will send no message larger than this. Assume no timeout here.
+            if data == b'':
+                connected = False
+            #TODO: assume the data is a byte/bytearray representation of a class in 'messages.py' that 
+            msg = None
 
 
-                #dispatch message handler
-                if isinstance(msg, messages.ClientRequestMessage):
-                    logger.critical('Received Message from client: %s', msg)
-                    echo(client_socket, msg, extra_data=str(state_x))
-                    client_id = msg.client_id
-
-                    if client_id == 1:
-                        state_x += 1
-                        logger.info("state_x is " + str(state_x))
-                    elif client_id == 2:
-                        state_y += 1
-                        logger.info("state_y is " + str(state_y))
-                    elif client_id == 3:
-                        state_z += 1    
-                        logger.info("state_z is " + str(state_z)) 
+            try:
+                msg = messages.deserialize(data)
+                
+            except pickle.UnpicklingError:
+                logger.error("Unexpected Message format; could not deserialize") 
+            except EOFError:
+                logger.error("deserialization reached end of buffer without finishing; data was %d bytes, and we can only handle %d per recv call", len(data), constants.MAX_MSG_SIZE)
+                #If we're hitting this error, then we need to consider sending a length in the first few bytes and looping here until we have received that entire length
 
 
-                    with lock_var2:
-                        #critical section
+            #dispatch message handler
+            if isinstance(msg, messages.ClientRequestMessage):
+                logger.critical('Received Message from client: %s', msg)
+                echo(client_socket, msg, extra_data=str(state_x))
+                client_id = msg.client_id
 
-                        checkpoint_msg_counter = (checkpoint_msg_counter + 1)   
-                        if checkpoint_msg_counter == checkpoint_freq:
-                            checkpoint_msg_counter = 0
+                if client_id == 1:
+                    state_x += 1
+                    logger.info("state_x is " + str(state_x))
+                elif client_id == 2:
+                    state_y += 1
+                    logger.info("state_y is " + str(state_y))
+                elif client_id == 3:
+                    state_z += 1    
+                    logger.info("state_z is " + str(state_z)) 
 
-                            #wait here already in this while loop if already in quiescence mode
-                            while am_i_quiet:
-                                continue     
-
-                            # go to quiescience
-                            am_i_quiet = True 
 
 
-                    
 
-                elif isinstance(msg, messages.LFDMessage) and msg.data == constants.MAGIC_MSG_LFD_REQUEST:
-                    logger.info("Received from LFD: %s", msg.data)
-                    respond_to_heartbeat(client_socket, 0)
+                # with lock_var2:
+                #     #critical section
 
-                else: 
-                    logger.info("Received unexpected message; type: [%s]", type(msg))
+                checkpoint_msg_counter = (checkpoint_msg_counter + 1)   
+                if checkpoint_msg_counter == checkpoint_freq:
+
+                    #quiesce -Reese
+                    # establish the number of backups to send checkpoints to
+                    num_backups_lock.acquire()
+                    num_backups_checkpointing = num_backups
+                    num_backups_lock.release()
+                    # inform them to go
+                    quiescence_cond_var.notify_all()
+                    quiescence_cond_var.release()
+                    # await completion
+                    quiescence_cond_var.wait_for(finished_checkpointing)
+                    quiescence_cond_var.acquire()
+                    #end quiescence -Reese
+
+                    checkpoint_msg_counter = 0
+
+                    # no longer necessary -Reese
+                    #wait here already in this while loop if already in quiescence mode
+                    # while am_i_quiet:
+                    #     continue     
+
+                    # # go to quiescience
+                    # am_i_quiet = True 
+
+
+                
+
+            elif isinstance(msg, messages.LFDMessage) and msg.data == constants.MAGIC_MSG_LFD_REQUEST:
+                logger.info("Received from LFD: %s", msg.data)
+                respond_to_heartbeat(client_socket, 0)
+
+            else: 
+                logger.info("Received unexpected message; type: [%s]", type(msg))
         
         
     finally: 
