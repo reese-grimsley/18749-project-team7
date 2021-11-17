@@ -30,11 +30,10 @@ checkpoint_freq = 3
 # triggers checkpoints when no of client messages crosses checkpoint_freq
 checkpoint_msg_counter = 0
 
-
-
 #lock_variable
-lock_var1 = threading.Lock()
+#lock_var1 = threading.Lock()
 lock_var2 = threading.Lock()
+
 
 DebugLogger.set_console_level(30)
 logger = DebugLogger.get_logger('passive_app_server')
@@ -78,66 +77,81 @@ def parse_args():
 
 #? Also should we keep receiving data from client socket (while quiescence is happening) and concatenating these messages into a local queue maintained by pas_server ? Or the client_socket handles this buffering implicitly ? ...talking about the line 69
 
-def primary_backup_side_handler(backup_ip, backup_port):
+def primary_backup_side_handler(backup_ip1, backup_port1, backup_ip2, backup_port2):
     global state_x
     global state_y
     global state_z
     global am_i_quiet
     global checkpoint_num
 
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client_socket:
+    # connect to backup 1
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client_socket1:
 
         try: 
             # client_socket.settimeout(constants.CLIENT_SERVER_TIMEOUT)
-            client_socket.connect((backup_ip, backup_port))
-            print('BACKUP IP:'+ str(backup_ip))
-            print('BACKUP PORT :'+ str(backup_port))
+            client_socket1.connect((backup_ip1, backup_port1))
+            print('BACKUP IP 1 :'+ str(backup_ip1))
+            print('BACKUP PORT 1:'+ str(backup_port1))
 
-            logger.critical('Connected to Backup server!')
+            logger.critical('Connected to Backup server 1!')
 
         except Exception:
-            logger.warning('Failed to connect to Backup server with ip: %d', backup_ip)
+            logger.warning('Failed to connect to Backup server 1 with ip: %d', backup_ip1)
+
+
+        # connect to backup 2
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client_socket2:
+
+            try: 
+                # client_socket.settimeout(constants.CLIENT_SERVER_TIMEOUT)
+                client_socket2.connect((backup_ip2, backup_port2))
+                print('BACKUP IP 2 :'+ str(backup_ip2))
+                print('BACKUP PORT 2:'+ str(backup_port2))
+
+                logger.critical('Connected to Backup server 2!')
+
+            except Exception:
+                logger.warning('Failed to connect to Backup server 2 with ip: %d', backup_ip2)
 
 
 
-        connected = True
-        try:
-            while connected:
-                if(am_i_quiet):
-                    
-                    # for now constants.ECE_CLUSTER_ONE is primary...
-                    #later this should be replaced with the primary_id...
-                    checkpt_message = messages.CheckpointMessage(state_x, state_y, state_z, constants.ECE_CLUSTER_ONE, checkpoint_num)
+            # start executing send checkpoints logic
+            connected = True
+            try:
+                while connected:
+                    if(am_i_quiet):
+                        
+                        # for now constants.ECE_CLUSTER_ONE is primary...
+                        #later this should be replaced with the primary_id...
+                        checkpt_message = messages.CheckpointMessage(state_x, state_y, state_z, constants.ECE_CLUSTER_ONE, checkpoint_num)
 
-                    checkpt_msg = checkpt_message.serialize()
+                        checkpt_msg = checkpt_message.serialize()
 
-                    client_socket.sendall(checkpt_msg)
+                        try:
+                            client_socket1.sendall(checkpt_msg)
+                            client_socket2.sendall(checkpt_msg)
+                        except Exception:
+                            logger.info('...') # dummy condition
+                            # not handled
 
-                    logger.critical('Sending checkpoint' + str(checkpoint_num) + ' to Backup servers.....')
+                        logger.critical('Sending checkpoint' + str(checkpoint_num) + ' to Backup servers.....')
 
-                    #check whether ack is received? possibility of deadlock if ack is included
+                        #check whether ack is received? possibility of deadlock if ack is included
 
-                    checkpoint_num = (checkpoint_num + 1)
+                        checkpoint_num = (checkpoint_num + 1)
 
-
-                    with lock_var1:
-
+                        #with lock_var1:
                         #critical section
-                        #wait here already in this while loop if already 
-                        # primary server is responding to clients
-                        while not am_i_quiet:
-                            continue 
-                            
                         am_i_quiet = False
 
-                        
+                            
 
-            
-        finally: 
-            client_socket.close()
-            # for now constants.ECE_CLUSTER_ONE is primary...
-            #later this should be replaced with the primary_id...
-            logger.info('Closed connection for client at (%s)', constants.ECE_CLUSTER_ONE)
+                
+            finally: 
+                client_socket.close()
+                # for now constants.ECE_CLUSTER_ONE is primary...
+                #later this should be replaced with the primary_id...
+                logger.info('Closed connection for client at (%s)', constants.ECE_CLUSTER_ONE)
 
 
 
@@ -148,13 +162,12 @@ def primary_client_side_handler(client_socket, client_addr):
     global am_i_quiet
     global checkpoint_freq
     global checkpoint_msg_counter
-
     global lock_var2
-
 
     connected = True
     try:
         while connected:
+            #maybe here we should receive the messages and keep enqueuing into a queue regardless of quiescience state
             if(not am_i_quiet):
 
                 data = client_socket.recv(constants.MAX_MSG_SIZE) # assume that we will send no message larger than this. Assume no timeout here.
@@ -176,37 +189,37 @@ def primary_client_side_handler(client_socket, client_addr):
 
                 #dispatch message handler
                 if isinstance(msg, messages.ClientRequestMessage):
-                    logger.critical('Received Message from client: %s', msg)
-                    echo(client_socket, msg, extra_data=str(state_x))
-                    client_id = msg.client_id
-
-                    if client_id == 1:
-                        state_x += 1
-                        logger.info("state_x is " + str(state_x))
-                    elif client_id == 2:
-                        state_y += 1
-                        logger.info("state_y is " + str(state_y))
-                    elif client_id == 3:
-                        state_z += 1    
-                        logger.info("state_z is " + str(state_z)) 
-
-
                     with lock_var2:
-                        #critical section
 
-                        checkpoint_msg_counter = (checkpoint_msg_counter + 1)   
+                        # critical section #
+
+                        #wait here until quiescience ends
+                        while(am_i_quiet):
+                            continue
+
+                    
+                        logger.critical('Received Message from client: %s', msg)
+                        echo(client_socket, msg, extra_data=str(state_x))
+                        client_id = msg.client_id
+
+                        if client_id == 1:
+                            state_x += 1
+                            logger.info("state_x is " + str(state_x))
+                        elif client_id == 2:
+                            state_y += 1
+                            logger.info("state_y is " + str(state_y))
+                        elif client_id == 3:
+                            state_z += 1    
+                            logger.info("state_z is " + str(state_z)) 
+
+                        checkpoint_msg_counter = (checkpoint_msg_counter + 1)
+
                         if checkpoint_msg_counter == checkpoint_freq:
                             checkpoint_msg_counter = 0
-
-                            #wait here already in this while loop if already in quiescence mode
-                            while am_i_quiet:
-                                continue     
 
                             # go to quiescience
                             am_i_quiet = True 
 
-
-                    
 
                 elif isinstance(msg, messages.LFDMessage) and msg.data == constants.MAGIC_MSG_LFD_REQUEST:
                     logger.info("Received from LFD: %s", msg.data)

@@ -66,14 +66,14 @@ def basic_primary_server(backup_side_handler, client_side_handler, logger=helper
     # backup servers
     #backup server has to listen to primary server (for checkpoint messages) and LFD on different sockets (and different threads and work in parallel)
 
-    thread1 = threading.Thread(target=backup_side_handler, args=[backup_ip1, backup_port1], daemon=daemonic)
+    thread1 = threading.Thread(target=backup_side_handler, args=[backup_ip1, backup_port1, backup_ip2, backup_port2], daemon=daemonic)
     
     thread1.start()        
 
 
-    thread2 = threading.Thread(target=backup_side_handler, args=[backup_ip2, backup_port2], daemon=daemonic)
+    #thread2 = threading.Thread(target=backup_side_handler, args=[backup_ip2, backup_port2], daemon=daemonic)
     
-    thread2.start()            
+    #thread2.start()            
 
 
     # socket for communicating with clients and LFDs
