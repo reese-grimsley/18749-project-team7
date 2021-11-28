@@ -46,7 +46,7 @@ def parse_args():
     parser.add_argument('-p2', '--port2', metavar='p2', default=default_ports[1], help='The port that the server will be listening to and that this LFD will access', type=int)
 
     parser.add_argument('-i', '--ip', metavar='i', default=constants.CATCH_ALL_IP, help='The IP address this server should bind to -- defaults to 0.0.0.0, which will work across any local address', type=str)
-    parser.add_argument('-f', '--flag', metavar='f', default=1, help='Primary is flag = 0 and Backup is flag = 1', type=int)
+    # parser.add_argument('-f', '--flag', metavar='f', default=1, help='Primary is flag = 0 and Backup is flag = 1', type=int)
     parser.add_argument('-s', '--server_id', metavar='sid', default=1, type=int, help='Identifier for the server')
     args = parser.parse_args()
 
@@ -59,13 +59,11 @@ def parse_args():
         print(args.ip)
         raise ValueError('The IP address given [%s] is not a valid format', args.ip)
 
-    if args.flag != 0 and args.flag != 1:
-        raise ValueError('Please enter a valid flag...')
+    # we don't need flags anymore
+    # if args.flag != 0 and args.flag != 1:
+    #     raise ValueError('Please enter a valid flag...')
 
-   
-
-
-    return args.ip, args.port1, args.port2, args.flag, args.server_id
+    return args.ip, args.port1, args.port2, args.server_id
 
 
 
@@ -325,8 +323,15 @@ def primary_server():
 def backup_server():
     # NOTE: we are using the default ip and ports specified in the handler functions...not from the user arguments
     basic_backup_server(backup_server_handler, logger=logger, ip=constants.CATCH_ALL_IP, port=constants.DEFAULT_APP_BACKUP_SERVER_PORT, reuse_addr=True, daemonic=True)
-   
+    
     logger.info("Backup Server Shutdown\n\n")
+
+# we won't be distinguishing primary and backup server
+def pas_server():
+
+    basic_backup_server(backup_server_handler, logger=logger, ip=constants.CATCH_ALL_IP, port=constants.DEFAULT_APP_BACKUP_SERVER_PORT, reuse_addr=True, daemonic=True)
+    basic_primary_server(primary_backup_side_handler, primary_client_side_handler, logger=logger, ip=constants.CATCH_ALL_IP, backup_ip1=constants.ECE_CLUSTER_TWO, backup_ip2=constants.ECE_CLUSTER_THREE, backup_port1 = constants.DEFAULT_APP_BACKUP_SERVER_PORT, backup_port2 = constants.DEFAULT_APP_BACKUP_SERVER_PORT,  port2 = constants.DEFAULT_APP_PRIMARY_SERVER_PORT1, reuse_addr=True, daemonic=True)
+    logger.info("Server shutdown\n")
 
 
 '''
@@ -338,20 +343,20 @@ def passive_application_server(ip, port, flag):
 
 
 if __name__ == "__main__":
-    ip, port1, port2, flag, server_id = parse_args()
+    ip, port1, port2, server_id = parse_args()
     DebugLogger.setup_file_handler('./passive_replication_server_' + ip+':'+str(port1)+str(port2)+str(flag)+'.log', level=1)
     #TODO: use the server_id (part of LFD response, check against client requests)
     #passive_application_server(ip, port, flag)
 
-    #primary server
-    if flag == 0:
-        primary_server()   
-        #primary_server(ip, port1, port2)        
+    # #primary server
+    # if flag == 0:
+    #     primary_server()   
+    #     #primary_server(ip, port1, port2)        
 
-    #backup servers
-    else:
-        backup_server()
-        #backup_server(ip, port1) 
-
+    # #backup servers
+    # else:
+    #     backup_server()
+    #     #backup_server(ip, port1) 
+    pas_server()
 
     print('done')

@@ -1,4 +1,5 @@
-import socket 
+ ?>˘˘˘˘˘˘˘˘˘˘˘˘
+ import socket 
 import threading
 import re
 import constants
@@ -53,6 +54,13 @@ def parse_addresses_file(path):
     except Exception as e:
         helper_logger.error(e)
         raise e
+
+# TODO: My implementation is have a server has three threads running. 
+# When After the server talking to the GFD, it will know that if it will be primary or backup, and then it will
+# just simply stop the thread it won't be relevant. 
+
+
+def pas_rep_server():
 
 
 def basic_primary_server(backup_side_handler, client_side_handler, logger=helper_logger, ip=constants.CATCH_ALL_IP, backup_ip1 = constants.ECE_CLUSTER_TWO, backup_ip2 = constants.ECE_CLUSTER_THREE, backup_port1 = constants.DEFAULT_APP_BACKUP_SERVER_PORT, backup_port2 = constants.DEFAULT_APP_BACKUP_SERVER_PORT,  port2 = constants.DEFAULT_APP_PRIMARY_SERVER_PORT1, reuse_addr=True, daemonic=True):
