@@ -8,6 +8,8 @@ import messages
 membership = []
 client_membership = []
 logger = DebugLogger.get_logger('gfd')
+config = 1  #passive
+primary = [] # at most one server id
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Global Fault Detector")
@@ -15,7 +17,8 @@ def parse_args():
     parser.add_argument('-p', '--port', metavar='p', default=constants.DEFAULT_GFD_PORT, help='The port that the gfd will be listening to LFD', type=int)
     parser.add_argument('-hb', '--heartbeat', metavar='HB', default=constants.DEFAULT_HEARTBEAT_PERIOD, help='The period between each heartbeat, in seconds', type=float)
     parser.add_argument('-i', '--ip', metavar='i', default=constants.ECE_CLUSTER_FOUR, help='The IP address of the gfd', type=str)
-
+    parser.add_argument('-c', '--config', metavar='t', default=constants.TYPE_PASSIVE, help='The configuration of the system. 0 for active, 1 for passive', type=int)
+    
     args = parser.parse_args()
 
     if args.port < 1024 or args.port > 65535:
@@ -23,7 +26,7 @@ def parse_args():
     if args.heartbeat <= 0: 
         raise ValueError('The heartbeat must be a positive value')
     
-    return args.ip, args.port, args.heartbeat
+    return args.ip, args.port, args.heartbeat, args.config
 
 def print_membership(list):
     num = len(list)
@@ -32,18 +35,56 @@ def print_membership(list):
         members += "[" + member + "] "       
     logger.info("GFD: " + str(num) + " member(s) - " + members)
     
-def register_membership(data):
+def get_membership_index(server_info):
+    
+    for i in range(len(membership)):
+        info = membership[i]
+        if server_info in info:
+           return i
+    return -1
+            
+def register_membership(data, conn):
+    IS_PRIMARY = False
     response = str(data)
     response_list = response.split()                  # split based on spaces
-    server_type = response_list[0]
+    #TODO: parse response
+    #server_type = response_list[0]
     server_ip = response_list[len(response_list) - 1]
     server_id = response_list[len(response_list) - 3]
-    server = str(server_type) + " " + str(server_id) + " : " + str(server_ip)
-    if server not in membership:
+        
+    '''if server not in membership:
+        logger.info("Add " + server + " to membership")
+        membership.append(server) 
+        print_membership(membership)'''
+        
+    if config and len(primary) == 0: # set primary server and send primary msg to that server
+        primary.append(server_id)
+        IS_PRIMARY = True
+        logger.info("Assign " + server_id + " as primary.")
+    
+    if config and len(primary) == 1:    
+        primary_id = primary[0]    
+        primary_msg = messages.PrimaryMessage(primary_id)
+        primary_msg_bytes = primary_msg.serialize()
+        conn.sendall(primary_msg_bytes)   
+      
+    server_type = "Primary" if IS_PRIMARY else "Backup" 
+    server = str(server_type) + " " + str(server_id) + " : " + str(server_ip)    
+    if server not in membership: 
+        server_info = str(server_id) + " : " + str(server_ip)     
+        if (server_info in s for s in membership):
+            logger.info("remove")
+            idx = get_membership_index(server_info)
+            logger.info(idx)
+            if idx != -1:               
+                info = membership[idx]
+                if "Primary" in info: 
+                    return
+                membership.pop(idx)
         logger.info("Add " + server + " to membership")
         membership.append(server) 
         print_membership(membership)
-
+        
 def register_client(data):
     response = str(data)
     response_list = response.split()
@@ -54,7 +95,7 @@ def register_client(data):
         client_membership.append(client)
         print_membership(client_membership)
     
-def cancel_membership(data):
+def cancel_membership(data, conn):
     response = str(data)
     response_list = response.split()
     server_type = response_list[0]
@@ -62,9 +103,20 @@ def cancel_membership(data):
     server_id = response_list[len(response_list) - 3]
     server = str(server_type) + " " + str(server_id) + " : " + str(server_ip)
     logger.info("Remove " + server + " out membership")
+    
     if server in membership:
         membership.remove(server)
     print_membership(membership)
+    
+    if config and len(primary) == 1: # if passive and there exist primary
+        if server_id == primary[0]:  # if primary
+            primary.remove(server_id)
+            
+    if config and len(primary) == 0 and len(membership) > 0: # no primary, we random choose one in membership   
+        primary_id = membership[0]    
+        primary_msg = messages.PrimaryMessage(primary_id)
+        primary_msg_bytes = primary_msg.serialize()
+        conn.sendall(primary_msg_bytes) 
 
 def parse_membership(member):
     # member format: Primary S1 : 172.19.137.180 
@@ -143,11 +195,11 @@ def serve_lfd(conn, addr, period):
                 success = True
             elif constants.MAGIC_MSG_SERVER_FAIL in response_msg.data:        # if receive server fail message, cancel membership
                 logger.info('Received from LFD %s: [%s]', str(addr), response_msg.data)
-                cancel_membership(response_msg.data)
+                cancel_membership(response_msg.data, conn)
                 success = True
             elif constants.MAGIC_MSG_SERVER_START in response_msg.data:
                 logger.info('Received from LFD %s: [%s]', str(addr), response_msg.data)
-                register_membership(response_msg.data)
+                register_membership(response_msg.data, conn)
                 success = True
             elif constants.MAGIC_MSG_RESPONSE_FROM_CLIENT in response_msg.data:
                 logger.info('Received from Client %s: [%s]', str(addr), response_msg.data)
@@ -190,5 +242,5 @@ def start_conn(ip, port, period):
             logger.error(e)
 
 if __name__ == "__main__":
-    gfd_ip, gfd_port, heartbeat_period = parse_args()
+    gfd_ip, gfd_port, heartbeat_period, config = parse_args()
     start_conn(ip=gfd_ip, port=gfd_port, period=heartbeat_period) 
