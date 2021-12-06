@@ -73,9 +73,7 @@ def register_membership(data, conn):
     if server not in membership: 
         server_info = str(server_id) + " : " + str(server_ip)     
         if (server_info in s for s in membership):
-            logger.info("remove")
             idx = get_membership_index(server_info)
-            logger.info(idx)
             if idx != -1:               
                 info = membership[idx]
                 if "Primary" in info: 

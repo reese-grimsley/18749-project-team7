@@ -64,7 +64,10 @@ def application_server_handler(client_socket, client_addr):
             elif isinstance(msg, messages.LFDMessage) and msg.data == constants.MAGIC_MSG_LFD_REQUEST:
                 logger.info("Received from LFD: %s", msg.data)
                 respond_to_heartbeat(client_socket)
-
+                
+            elif isinstance(msg, messages.LFDMessage):
+                logger.critical("Received from LFD: %s", msg.data)
+                
             else: 
                 logger.info("Received unexpected message; type: [%s]", type(msg))
             

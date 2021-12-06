@@ -159,14 +159,14 @@ class LFDGFDMessage(Message):
     3. LFD sends delete Server request to GFD
     
     '''
-    def __init__(self, lfd_id, action, server_ip, server_type):
+    def __init__(self, lfd_id, action, server_ip):
         
         if action == constants.LFD_ACTION_HB:
             data = "LFD" + str(lfd_id) + ": " + constants.MAGIC_MSG_LFD_RESPONSE
         elif action == constants.LFD_ACTION_ADD_SERVER:
-            data = server_type + constants.MAGIC_MSG_SERVER_START + " at S" + str(lfd_id) + " : " + str(server_ip)
+            data =constants.MAGIC_MSG_SERVER_START + " at S" + str(lfd_id) + " : " + str(server_ip)
         elif action == constants.LFD_ACTION_RM_SERVER:    
-            data = server_type + constants.MAGIC_MSG_SERVER_FAIL + " at S" + str(lfd_id) + " : " + str(server_ip)
+            data = constants.MAGIC_MSG_SERVER_FAIL + " at S" + str(lfd_id) + " : " + str(server_ip)
             
         super().__init__(data=data)
 

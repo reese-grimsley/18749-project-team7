@@ -1,4 +1,4 @@
-# Written by Reese Grimsley, Sept 6, 2021
+ # Written by Reese Grimsley, Sept 6, 2021
 # Modified by Ting Chen and Chia-Chia Chang, Oct 4, 2021
 
 import socket, argparse, time
@@ -11,7 +11,7 @@ import messages
 logger = DebugLogger.get_logger('lfd')
 server_response = 0
 server_fail = False
-server_primary = False
+server_type = ""
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Local Fault Detector")
@@ -35,10 +35,11 @@ def parse_args():
 
     return args.ip, args.port, args.heartbeat, args.gip, args.gport, args.lfd_id
 
-def is_primary(msg):
-    msg_length = len(msg)
-    value = int(msg[msg_length - 1])
-    return True if value == 0 else False
+def is_primary(msg, lfd_id):
+    msg_list = msg.split()
+    server_id = msg_list[0]
+    
+    return True if str(lfd_id) in server_id else False
     
 def poke_server(client_socket, lfd_id):
     '''
@@ -47,7 +48,7 @@ def poke_server(client_socket, lfd_id):
     #create a new socket every single time; restart from scratch
     success = False
     global server_response
-    global server_primary
+    
     try: 
         lfd_message = messages.LFDMessage()
         lfd_bytes = lfd_message.serialize()
@@ -58,10 +59,11 @@ def poke_server(client_socket, lfd_id):
         
         if constants.MAGIC_MSG_LFD_RESPONSE in response_msg.data:
             logger.info('Received from S' + str(lfd_id) + ' : [%s]', response_msg.data)
-            server_primary = is_primary(response_msg.data)
+            #server_primary = is_primary(response_msg.data)
             success = True
             server_response += 1
-            
+        
+               
     except socket.timeout as st:
         logger.error("Heartbeat request timed out")
         success = False
@@ -76,6 +78,8 @@ def run_lfd(lfd_socket, period, lfd_id):
     num_failures = 0
     num_heartbeats = 0
     global server_fail
+    global server_type
+    
     try: 
         while True:
             now = time.time()
@@ -91,7 +95,7 @@ def run_lfd(lfd_socket, period, lfd_id):
                 server_good = False
 
             if server_good:
-                logger.info("Server responded correctly; waiting until next heartbeat")
+                logger.info("Server responded correctly; waiting until next heartbeat")           
             else:
                 num_failures += 1
                 server_fail = True            # notify gfd
@@ -103,7 +107,13 @@ def run_lfd(lfd_socket, period, lfd_id):
                 lfd_socket.close()
                 lfd_socket = None
                 break
-
+                
+            if  server_type != "":
+                logger.info('Send S' + str(lfd_id) + ' : [%s]', server_type)
+                lfd_message = messages.LFDMessage(server_type)
+                lfd_bytes = lfd_message.serialize()
+                lfd_socket.sendall(lfd_bytes) 
+                
             time.sleep(period)
 
             # wait for the next period
@@ -120,17 +130,17 @@ def run_lfd(lfd_socket, period, lfd_id):
 def handle_gfd(lfd_socket, server_ip, lfd_id):
     global server_response
     global server_fail
-    global server_primary
-    server_type = "" 
+    global server_type
+
     try:
         while True:
             response_bytes = lfd_socket.recv(constants.MAX_MSG_SIZE)
             response_msg = messages.deserialize(response_bytes)
             
-            if server_primary: 
+            '''if server_primary: 
                 server_type = "Primary"
             else:
-                server_type = "Backup"
+                server_type = "Backup"'''
             
             if not response_msg.data or response_msg.data is None:
                 continue
@@ -138,20 +148,26 @@ def handle_gfd(lfd_socket, server_ip, lfd_id):
             logger.info("Received from GFD: [%s]", response_msg.data)
             if server_response > 0 and server_response <= 2:
                 logger.info("Send to GFD: [" + "LFD" + str(lfd_id) + " sends add S" + str(lfd_id) + " request to GFD]")
-                lfd_response = messages.LFDGFDMessage(lfd_id, constants.LFD_ACTION_ADD_SERVER, server_ip, server_type)
+                lfd_response = messages.LFDGFDMessage(lfd_id, constants.LFD_ACTION_ADD_SERVER, server_ip)
                 lfd_bytes = lfd_response.serialize()
                 lfd_socket.sendall(lfd_bytes)
             if server_fail is True:
                 logger.info("Send to GFD: [" + "LFD" + str(lfd_id) + " sends delete S" + str(lfd_id) + " request to GFD]")
-                lfd_response = messages.LFDGFDMessage(lfd_id, constants.LFD_ACTION_RM_SERVER, server_ip, server_type)
+                lfd_response = messages.LFDGFDMessage(lfd_id, constants.LFD_ACTION_RM_SERVER, server_ip)
                 lfd_bytes = lfd_response.serialize()
                 lfd_socket.sendall(lfd_bytes)
                 server_fail = False
             if constants.MAGIC_MSG_GFD_REQUEST in response_msg.data:
                 logger.info("Send to GFD: [LFD Heartbeat]")
-                lfd_response = messages.LFDGFDMessage(lfd_id, constants.LFD_ACTION_HB, 0, server_type)
+                lfd_response = messages.LFDGFDMessage(lfd_id, constants.LFD_ACTION_HB, 0)
                 lfd_bytes = lfd_response.serialize()
                 lfd_socket.sendall(lfd_bytes)
+            if constants.MAGIC_MSG_PRIMARY in response_msg.data:
+                
+                if is_primary(response_msg.data, lfd_id) :
+                    server_type = "Primary"
+                else:
+                    server_type = "Backup"    
                 
     except KeyboardInterrupt:
         logger.warning('Caught Keyboard Interrupt in local fault detector; exiting')
