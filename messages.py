@@ -146,7 +146,7 @@ class PrimaryMessage(Message):
     A message for the global fault detector to send to primary server
     '''
     def __init__(self, primary_id):
-        data = str(primary_id) + " " + constants.MAGIC_MSG_PRIMARY  # Ex: "1 Primary" means S1 is primary 
+        data = str(primary_id) + " " + constants.MAGIC_MSG_PRIMARY  # Ex: "S1 Primary" means S1 is primary 
         super().__init__(data=data)
 
 class LFDGFDMessage(Message):

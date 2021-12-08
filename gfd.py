@@ -10,6 +10,7 @@ client_membership = []
 logger = DebugLogger.get_logger('gfd')
 config = 1  #passive
 primary = [] # at most one server id
+conn_dict = {}
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Global Fault Detector")
@@ -52,11 +53,6 @@ def register_membership(data, conn):
     server_ip = response_list[len(response_list) - 1]
     server_id = response_list[len(response_list) - 3]
         
-    '''if server not in membership:
-        logger.info("Add " + server + " to membership")
-        membership.append(server) 
-        print_membership(membership)'''
-        
     if config and len(primary) == 0: # set primary server and send primary msg to that server
         primary.append(server_id)
         IS_PRIMARY = True
@@ -81,6 +77,7 @@ def register_membership(data, conn):
                 membership.pop(idx)
         logger.info("Add " + server + " to membership")
         membership.append(server) 
+        conn_dict[server_id] = conn
         print_membership(membership)
         
 def register_client(data):
@@ -96,26 +93,39 @@ def register_client(data):
 def cancel_membership(data, conn):
     response = str(data)
     response_list = response.split()
-    server_type = response_list[0]
+    #server_type = response_list[0]
     server_ip = response_list[len(response_list) - 1]
     server_id = response_list[len(response_list) - 3]
-    server = str(server_type) + " " + str(server_id) + " : " + str(server_ip)
-    logger.info("Remove " + server + " out membership")
+    #server = str(server_type) + " " + str(server_id) + " : " + str(server_ip)
+    #logger.info("Remove " + server + " out membership")
     
-    if server in membership:
-        membership.remove(server)
-    print_membership(membership)
+    server_type = "Primary" if server_id in primary else "Backup" 
+    server = str(server_type) + " " + str(server_id) + " : " + str(server_ip)
+    if server in membership: 
+        server_info = str(server_id) + " : " + str(server_ip)     
+        logger.info("Remove " + server + " out membership")
+        membership.remove(server) 
+        conn_dict.pop(server_id)
+        print_membership(membership)
     
     if config and len(primary) == 1: # if passive and there exist primary
+        logger.info("Check whether is primary to remove")
         if server_id == primary[0]:  # if primary
+            logger.info("Yes, it is primary and to be removed.")
             primary.remove(server_id)
             
-    if config and len(primary) == 0 and len(membership) > 0: # no primary, we random choose one in membership   
-        primary_id = membership[0]    
+    if config and len(primary) == 0 and len(membership) > 0: # no primary, we random choose one in membership 
+        logger.info("Currently no primary, assign a new one...")  
+        primary_id = membership[0].split()[1]
+        logger.info("Assign " + primary_id + " as new primary.")
         primary_msg = messages.PrimaryMessage(primary_id)
         primary_msg_bytes = primary_msg.serialize()
-        conn.sendall(primary_msg_bytes) 
-
+        # tell the new primary server that it has been changed to primary
+        #conn.sendall(primary_msg_bytes) 
+        new_primary_conn = conn_dict[primary_id]
+        new_primary_conn.sendall(primary_msg_bytes)
+    
+    
 def parse_membership(member):
     # member format: Primary S1 : 172.19.137.180 
     member_list = member.split()    # split based on spaces
