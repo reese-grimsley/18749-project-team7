@@ -9,7 +9,8 @@ membership = []
 client_membership = []
 logger = DebugLogger.get_logger('gfd')
 config = 1  #passive
-primary = [] # at most one server id
+primary = {} # at most one server id
+backup = {} 
 conn_dict = {}
 
 def parse_args():
@@ -43,7 +44,17 @@ def get_membership_index(server_info):
         if server_info in info:
            return i
     return -1
-            
+
+def build_message(action):
+    port = constants.DEFAULT_APP_BACKUP_SERVER_PORT
+    #primary_msg = messages.PrimaryMessage(primary_id, backup, conn_dict)
+    primary_msg = messages.PrimaryMessage(primary, backup, action)
+    
+    for backup_id in  backup:
+        logger.info(str(backup_id) + " " + backup[backup_id])
+        
+    return primary_msg        
+    
 def register_membership(data, conn):
     IS_PRIMARY = False
     response = str(data)
@@ -54,20 +65,15 @@ def register_membership(data, conn):
     server_id = response_list[len(response_list) - 3]
         
     if config and len(primary) == 0: # set primary server and send primary msg to that server
-        primary.append(server_id)
+        primary[server_id] = str(server_ip) 
         IS_PRIMARY = True
         logger.info("Assign " + server_id + " as primary.")
-    
-    if config and len(primary) == 1:    
-        primary_id = primary[0]    
-        primary_msg = messages.PrimaryMessage(primary_id)
-        primary_msg_bytes = primary_msg.serialize()
-        conn.sendall(primary_msg_bytes)   
       
     server_type = "Primary" if IS_PRIMARY else "Backup" 
-    server = str(server_type) + " " + str(server_id) + " : " + str(server_ip)    
+    server = str(server_type) + " " + str(server_id) + " " + str(server_ip)  
+      
     if server not in membership: 
-        server_info = str(server_id) + " : " + str(server_ip)     
+        server_info = str(server_id) + " " + str(server_ip)     
         if (server_info in s for s in membership):
             idx = get_membership_index(server_info)
             if idx != -1:               
@@ -77,9 +83,27 @@ def register_membership(data, conn):
                 membership.pop(idx)
         logger.info("Add " + server + " to membership")
         membership.append(server) 
+        if IS_PRIMARY is False:
+            backup[server_id] = str(server_ip)
         conn_dict[server_id] = conn
         print_membership(membership)
+     
+    if config and len(primary) == 1: # send primary info to current server    
+        primary_id = list(primary.keys())[0]
+        #logger.info(primary_id)
+        #primary_msg = messages.PrimaryMessage(primary_id)
+        if IS_PRIMARY is True:  # add primary
+            primary_msg = build_message(constants.ADD_PRIMARY) 
+        else:                   # add backup
+            primary_msg = build_message(constants.ADD_BACKUP) 
+            
+        primary_msg_bytes = primary_msg.serialize()
+        for conn_key in conn_dict:
+            conn_value = conn_dict[conn_key]
+            conn_value.sendall(primary_msg_bytes)    
+    
         
+       
 def register_client(data):
     response = str(data)
     response_list = response.split()
@@ -100,9 +124,9 @@ def cancel_membership(data, conn):
     #logger.info("Remove " + server + " out membership")
     
     server_type = "Primary" if server_id in primary else "Backup" 
-    server = str(server_type) + " " + str(server_id) + " : " + str(server_ip)
+    server = str(server_type) + " " + str(server_id) + " " + str(server_ip)
     if server in membership: 
-        server_info = str(server_id) + " : " + str(server_ip)     
+        server_info = str(server_id) + " " + str(server_ip)     
         logger.info("Remove " + server + " out membership")
         membership.remove(server) 
         conn_dict.pop(server_id)
@@ -110,19 +134,36 @@ def cancel_membership(data, conn):
     
     if config and len(primary) == 1: # if passive and there exist primary
         logger.info("Check whether is primary to remove")
-        if server_id == primary[0]:  # if primary
+        if server_id == list(primary.keys())[0]:  # if primary
             logger.info("Yes, it is primary and to be removed.")
-            primary.remove(server_id)
+            primary.pop(server_id)
             
-    if config and len(primary) == 0 and len(membership) > 0: # no primary, we random choose one in membership 
+    if server_type == "Backup":
+        backup.pop(server_id)        
+        primary_id = list(primary.keys())[0]
+        primary_conn = conn_dict[primary_id]
+        primary_msg = build_message(constants.REMOVE_BACKUP)
+        primary_msg_bytes = primary_msg.serialize()
+        primary_conn.sendall(primary_msg_bytes)
+          
+    if config and len(primary) == 0 and len(backup) > 0: # no primary, we random choose one in membership 
         logger.info("Currently no primary, assign a new one...")  
-        primary_id = membership[0].split()[1]
-        logger.info("Assign " + primary_id + " as new primary.")
-        primary_msg = messages.PrimaryMessage(primary_id)
+        new_primary_id = list(backup.keys())[0]
+        new_primary_ip = backup[new_primary_id]
+        logger.info("Assign " + new_primary_id + " as new primary.")
+        server = "Backup" + " " + str(new_primary_id) + " " + str(new_primary_ip)
+        if server in membership: 
+            membership.remove(server) 
+            server = "Primary" + " " + str(new_primary_id) + " " + str(new_primary_ip)  
+            membership.append(server)
+            print_membership(membership)
+        primary[new_primary_id] = backup[new_primary_id]
+        backup.pop(new_primary_id)
+        primary_msg = build_message(constants.ADD_PRIMARY)
         primary_msg_bytes = primary_msg.serialize()
         # tell the new primary server that it has been changed to primary
         #conn.sendall(primary_msg_bytes) 
-        new_primary_conn = conn_dict[primary_id]
+        new_primary_conn = conn_dict[new_primary_id]
         new_primary_conn.sendall(primary_msg_bytes)
     
     
@@ -224,7 +265,6 @@ def serve_lfd(conn, addr, period):
             
             time.sleep(period)
     except Exception as e:
-        logger.info("in serve lfd")
         print(e)
 
     finally: 

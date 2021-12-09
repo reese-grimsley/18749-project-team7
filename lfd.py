@@ -11,8 +11,8 @@ import messages
 logger = DebugLogger.get_logger('lfd')
 server_response = 0
 server_fail = False
-server_type = ""
-
+#server_type = ""
+primary_msg  = ""
 def parse_args():
     parser = argparse.ArgumentParser(description="Local Fault Detector")
 
@@ -78,7 +78,7 @@ def run_lfd(lfd_socket, period, lfd_id):
     num_failures = 0
     num_heartbeats = 0
     global server_fail
-    global server_type
+    global primary_msg 
     
     try: 
         while True:
@@ -108,11 +108,12 @@ def run_lfd(lfd_socket, period, lfd_id):
                 lfd_socket = None
                 break
                 
-            if  server_type != "":
-                logger.info('Send S' + str(lfd_id) + ' : [%s]', server_type)
-                lfd_message = messages.LFDMessage(server_type)
+            if primary_msg  != "":
+                logger.info('Send S' + str(lfd_id) + ' : [%s]', primary_msg)
+                lfd_message = messages.LFDMessage(primary_msg)
                 lfd_bytes = lfd_message.serialize()
                 lfd_socket.sendall(lfd_bytes) 
+                primary_msg = ""
                 
             time.sleep(period)
 
@@ -130,17 +131,12 @@ def run_lfd(lfd_socket, period, lfd_id):
 def handle_gfd(lfd_socket, server_ip, lfd_id):
     global server_response
     global server_fail
-    global server_type
-
+    #global server_type
+    global primary_msg 
     try:
         while True:
             response_bytes = lfd_socket.recv(constants.MAX_MSG_SIZE)
             response_msg = messages.deserialize(response_bytes)
-            
-            '''if server_primary: 
-                server_type = "Primary"
-            else:
-                server_type = "Backup"'''
             
             if not response_msg.data or response_msg.data is None:
                 continue
@@ -162,17 +158,42 @@ def handle_gfd(lfd_socket, server_ip, lfd_id):
                 lfd_response = messages.LFDGFDMessage(lfd_id, constants.LFD_ACTION_HB, 0)
                 lfd_bytes = lfd_response.serialize()
                 lfd_socket.sendall(lfd_bytes)
-            if constants.MAGIC_MSG_PRIMARY in response_msg.data:
-                
-                if is_primary(response_msg.data, lfd_id) :
+            if constants.MAGIC_MSG_PRIMARY in response_msg.data:               
+                '''if is_primary(response_msg.data, lfd_id) :
                     server_type = "Primary"
                 else:
-                    server_type = "Backup"    
+                    server_type = "Backup"'''
+                primary_msg = response_msg.data        
                 
     except KeyboardInterrupt:
         logger.warning('Caught Keyboard Interrupt in local fault detector; exiting')
-    
-def start_conn(ip, port, period, recipient, lfdID):
+
+def start_server_conn(ip, port, period, recipient, lfdID):
+    conn = False
+    print(ip)
+    print(port)
+    while True:
+        try:
+            lfd_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            lfd_socket.settimeout(period + 2)
+            lfd_socket.connect((ip, port))
+            logger.info('Connected to %s', ip)
+            if recipient is "gfd":
+                thread = threading.Thread(target=handle_gfd, args=[lfd_socket, server_ip, lfdID], daemon=1)
+                thread.start()
+                    
+            elif recipient is "server":
+                thread = threading.Thread(target=run_lfd, args=[lfd_socket, period, lfdID], daemon=1)
+                thread.start()
+                break
+                
+        except KeyboardInterrupt:
+            logger.warning('Caught Keyboard Interrupt in local fault detector; exiting')
+        except ConnectionRefusedError:
+            logger.error("connection refused")
+            time.sleep(3)
+   
+def start_gfd_conn(ip, port, period, recipient, lfdID):
     conn = False
     print(ip)
     print(port)
@@ -193,15 +214,16 @@ def start_conn(ip, port, period, recipient, lfdID):
     except KeyboardInterrupt:
         logger.warning('Caught Keyboard Interrupt in local fault detector; exiting')
     except ConnectionRefusedError:
-        start_conn(ip, port, period, recipient, lfdID)
-        lfd_socket.connect((ip, port))
+        #start_conn(ip, port, period, recipient, lfdID)
+        #lfd_socket.connect((ip, port))
         logger.error("connection refused")
         
 if __name__ == "__main__":
     server_ip, server_port, heartbeat_period, gfd_ip, gfd_port, lfd_id = parse_args()
     try:
-        start_conn(ip=gfd_ip, port=gfd_port, period=heartbeat_period, recipient="gfd", lfdID=lfd_id)
-        start_conn(ip=server_ip, port=server_port, period=heartbeat_period, recipient="server", lfdID=lfd_id)
+        start_gfd_conn(ip=gfd_ip, port=gfd_port, period=heartbeat_period, recipient="gfd", lfdID=lfd_id)
+        start_server_conn(ip=server_ip, port=server_port, period=heartbeat_period, recipient="server", lfdID=lfd_id)
+        
         while (True):
             pass
     except KeyboardInterrupt:
