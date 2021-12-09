@@ -163,6 +163,7 @@ def handle_gfd(lfd_socket, server_ip, lfd_id):
                     server_type = "Primary"
                 else:
                     server_type = "Backup"'''
+                logger.info(response_msg.data)
                 primary_msg = response_msg.data        
                 
     except KeyboardInterrupt:

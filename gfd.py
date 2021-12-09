@@ -49,9 +49,11 @@ def build_message(action):
     port = constants.DEFAULT_APP_BACKUP_SERVER_PORT
     #primary_msg = messages.PrimaryMessage(primary_id, backup, conn_dict)
     primary_msg = messages.PrimaryMessage(primary, backup, action)
+
+    logger.info(primary_msg.action)
     
-    for backup_id in  backup:
-        logger.info(str(backup_id) + " " + backup[backup_id])
+    for backup_id in backup:
+        logger.info("gfd have backup: " + str(backup_id) + " " + backup[backup_id])
         
     return primary_msg        
     
@@ -101,7 +103,6 @@ def register_membership(data, conn):
         for conn_key in conn_dict:
             conn_value = conn_dict[conn_key]
             conn_value.sendall(primary_msg_bytes)    
-    
         
        
 def register_client(data):
@@ -163,17 +164,19 @@ def cancel_membership(data, conn):
         primary_msg_bytes = primary_msg.serialize()
         # tell the new primary server that it has been changed to primary
         #conn.sendall(primary_msg_bytes) 
-        new_primary_conn = conn_dict[new_primary_id]
-        new_primary_conn.sendall(primary_msg_bytes)
+        for conn_key in conn_dict:
+            conn_value = conn_dict[conn_key]
+            conn_value.sendall(primary_msg_bytes)   
     
     
 def parse_membership(member):
-    # member format: Primary S1 : 172.19.137.180 
+    # member format: Primary S1 127.0.0.1
     member_list = member.split()    # split based on spaces
     server_type = member_list[0]
     print(str(server_type))
     server_ip = member_list[len(member_list) - 1]
-    server_id = member_list[len(member_list) - 3][1]
+    server_id = member_list[len(member_list) - 2][1]
+    logger.info("parse_membership: server_id " + server_id)
     is_primary = True if "Primary" in server_type else False
     return server_ip, server_id, is_primary
     
