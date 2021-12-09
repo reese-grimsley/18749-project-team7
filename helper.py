@@ -60,7 +60,7 @@ def parse_addresses_file(path):
 
 
 #def pas_rep_server():
-def basic_server(handler_function, ip=constants.CATCH_ALL_IP, port=constants.DEFAULT_APP_SERVER_PORT, logger=helper_logger, reuse_addr=True, daemonic=True):
+def basic_server(handler_function, ip=constants.CATCH_ALL_IP, port=constants.DEFAULT_APP_SERVER_PORT, logger=helper_logger, reuse_addr=True, daemonic=True, extra_args=[]):
     '''
     Basic server application. Accepts new connections and forks a thread for that new socket
     handler_function: A callback function that accepts two arguments: a socket and an address. 
@@ -83,7 +83,7 @@ def basic_server(handler_function, ip=constants.CATCH_ALL_IP, port=constants.DEF
                 client_socket, address = server_socket.accept()
                 logger.info('Connected by %s', address)
 
-                thread = threading.Thread(target=handler_function, args=[client_socket, address], daemon=daemonic)
+                thread = threading.Thread(target=handler_function, args=[client_socket, address, *extra_args], daemon=daemonic)
                 thread.start()
 
         except KeyboardInterrupt:
