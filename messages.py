@@ -11,6 +11,7 @@ import DebugLogger
 
 logger = DebugLogger.get_logger('messages')
 
+
 def deserialize(data):
     if not isinstance(data, bytes) and not isinstance(data, bytearray):
         raise ValueError("Can only deserialize bytes or bytearray's")
@@ -19,6 +20,7 @@ def deserialize(data):
     if len(data) == 0:
         return None
     return pickle.loads(data)
+
 
 class Message():
 
@@ -30,7 +32,7 @@ class Message():
         '''
         return bytes or bytearray that can be directly send through a socket
         '''
-        d =  pickle.dumps(self)
+        d = pickle.dumps(self)
         if (len(d)) > constants.MAX_MSG_SIZE:
             logger.warning('Message to be sent is larger than MAX SIZE [%d] for a single msg', constants.MAX_MSG_SIZE)
 
@@ -49,7 +51,6 @@ class ClientRequestMessage(Message):
         self.request_data = request_data
         self.server_id = server_id
 
-
     def copy_data_to_response(self):
         response = ClientResponseMessage(self.client_id, self.request_number, self.request_data, self.server_id)
         return response
@@ -65,12 +66,14 @@ class ClientRequestMessage(Message):
         assert isinstance(byte_data, bytes) or isinstance(byte_data, bytearray), "We can only deserialize a byte array"
         #
         reqMessage = pickle.loads(byte_data)
-        if isinstance(reqMessage, ClientRequestMessage): return reqMessage
-        else: 
+        if isinstance(reqMessage, ClientRequestMessage):
+            return reqMessage
+        else:
             return None
 
     def __repr__(self):
-        return '{ClientRequestMessage: <C-(%d), S-(%d), req#%d, "%s">}' % (self.client_id, self.server_id, self.request_number, self.request_data)
+        return '{ClientRequestMessage: <C-(%d), S-(%d), req#%d, "%s">}' % (
+        self.client_id, self.server_id, self.request_number, self.request_data)
 
     def __eq__(self, other):
         return id(other) == id(self)
@@ -104,12 +107,14 @@ class ClientResponseMessage(Message):
         assert isinstance(byte_data, bytes) or isinstance(byte_data, bytearray), "We can only deserialize a byte array"
         #
         reqMessage = pickle.loads(byte_data)
-        if isinstance(reqMessage, ClientResponseMessage): return reqMessage
-        else: 
+        if isinstance(reqMessage, ClientResponseMessage):
+            return reqMessage
+        else:
             return None
 
     def __repr__(self):
-        return '{ClientResponseMessage: <C%d, S%d, %d, "%s">}' % (self.client_id, self.server_id, self.request_number, self.response_data)
+        return '{ClientResponseMessage: <C%d, S%d, %d, "%s">}' % (
+        self.client_id, self.server_id, self.request_number, self.response_data)
 
     def __eq__(self, other):
         return id(other) == id(self)
@@ -119,6 +124,7 @@ class ClientResponseMessage(Message):
         if not isinstance(other, ClientResponseMessage): return False
         return self.request_number < other.request_number
 
+
 class AckMessage(Message):
     '''
     Simple acknowledgement
@@ -127,25 +133,30 @@ class AckMessage(Message):
     def __init__(self, ack_data=b''):
         super().__init__(data=ack_data)
 
+
 class LFDMessage(Message):
     '''
     A message for the local fault detector to send to server replicas
     '''
+
     def __init__(self, data=constants.MAGIC_MSG_LFD_REQUEST):
         super().__init__(data=data)
+
 
 class GFDMessage(Message):
     '''
     A message for the global fault detector to send to local fault detectors
     '''
+
     def __init__(self, data=constants.MAGIC_MSG_GFD_REQUEST):
         super().__init__(data=data)
+
 
 class PrimaryMessage(Message):
     '''
     A message for the global fault detector to send to LFD
     '''
-    def __init__(self, primary, backup, action):
+    '''def __init__(self, primary, backup, action):
         # message would be like: ACTION; PRIMARY; BACKUP1, BACKUP2, ...
         data = action + "; "
         
@@ -159,7 +170,33 @@ class PrimaryMessage(Message):
             data += constants.MAGIC_MSG_BACKUP + " " + str(backup_id) + " " + backup[backup_id] + " " + str(constants.DEFAULT_APP_BACKUP_SERVER_PORT)    
             data += ", "
             
-        super().__init__(data=data)
+        super().__init__(data=data)'''
+
+    def __init__(self, primary, backup, action):
+        super().__init__()
+        self.action = action
+        self.primary = primary
+        self.backup = backup
+
+    def serialize(self):
+        '''
+        return bytes or bytearray that can be directly send through a socket
+        '''
+        return pickle.dumps(self)
+
+    @classmethod
+    def deserialize(cls, byte_data):
+        assert isinstance(byte_data, bytes) or isinstance(byte_data, bytearray), "We can only deserialize a byte array"
+        #
+        reqMessage = pickle.loads(byte_data)
+        if isinstance(reqMessage, ClientResponseMessage):
+            return reqMessage
+        else:
+            return None
+
+    def __repr__(self):
+        return '{ClientResponseMessage: <action-%s, primary-%s, backup-%s>}' % (
+        self.action, self.primary, self.backup)
 
 class LFDGFDMessage(Message):
     '''
@@ -171,15 +208,16 @@ class LFDGFDMessage(Message):
     3. LFD sends delete Server request to GFD
     
     '''
+
     def __init__(self, lfd_id, action, server_ip):
-        
+
         if action == constants.LFD_ACTION_HB:
             data = "LFD" + str(lfd_id) + ": " + constants.MAGIC_MSG_LFD_RESPONSE
         elif action == constants.LFD_ACTION_ADD_SERVER:
-            data =constants.MAGIC_MSG_SERVER_START + " at S" + str(lfd_id) + " : " + str(server_ip)
-        elif action == constants.LFD_ACTION_RM_SERVER:    
+            data = constants.MAGIC_MSG_SERVER_START + " at S" + str(lfd_id) + " : " + str(server_ip)
+        elif action == constants.LFD_ACTION_RM_SERVER:
             data = constants.MAGIC_MSG_SERVER_FAIL + " at S" + str(lfd_id) + " : " + str(server_ip)
-            
+
         super().__init__(data=data)
 
 
@@ -195,18 +233,17 @@ class GFDClientMessage(Message):
         The action tells the client if the message is indicating a new replica connection was added (GFD_ACTION_NEW), a replica was taken down (GFD_ACTION_DEAD), or if there is some change in the status, e.g. becoming the new primary (GFD_ACTION_UPDATE)
         
         '''
-        #super().__init__()
+        # super().__init__()
         self.server_ip = server_ip
-        #self.server_port = server_port
+        # self.server_port = server_port
         self.sid = sid
         self.is_primary = is_primary
         self.action = action
         data = "S" + str(sid) + ": " + str(server_ip) + ", is primary: " + str(is_primary)
         super().__init__(data=data)
-        
+
 
 class KillThreadMessage():
-
     '''
     Threads cnanot actually be killed from another thread; they have to be daemonic and exit on automagically when the main thread dies, or return/kill themselves. 
 
@@ -220,7 +257,8 @@ class KillThreadMessage():
         pass
 
     def __eq__(self, other):
-        return id(self)  == id(other)
+        return id(self) == id(other)
+
     def __lt__(self, other):
         return True
 
@@ -237,7 +275,3 @@ class CheckpointMessage(Message):
         self.z = z
         self.primary_server_id = primary_server_id
         self.checkpoint_num = checkpoint_num
-
-
-
-
