@@ -26,6 +26,7 @@ MAGIC_MSG_SERVER_START = " Server started"
 MAGIC_MSG_SERVER_FAIL = " Server failed"
 MAGIC_MSG_LFD_REQUEST_SERVER = "Request for server heartbeat"
 MAGIC_MSG_PRIMARY = "Primary"
+MAGIC_MSG_BACKUP = "Backup"
 IPV4_REGEX = '^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$'
 
 QUEUE_TIMEOUT = 5.0 #seconds that reading from a queue will block for before returning 'None'
@@ -50,3 +51,8 @@ LFD_ACTION_RM_SERVER = 2       # delete server request to gfd
 
 TYPE_ACTIVE = 0
 TYPE_PASSIVE = 1
+
+ADD_PRIMARY = "Add Primary"
+ADD_BACKUP = "Add Backup"
+REMOVE_PRIMARY = "Remove Primary"
+REMOVE_BACKUP = "Remove Backup"
