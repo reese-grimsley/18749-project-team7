@@ -73,7 +73,7 @@ class ClientRequestMessage(Message):
 
     def __repr__(self):
         return '{ClientRequestMessage: <C-(%d), S-(%d), req#%d, "%s">}' % (
-        self.client_id, self.server_id, self.request_number, self.request_data)
+            self.client_id, self.server_id, self.request_number, self.request_data)
 
     def __eq__(self, other):
         return id(other) == id(self)
@@ -114,7 +114,7 @@ class ClientResponseMessage(Message):
 
     def __repr__(self):
         return '{ClientResponseMessage: <C%d, S%d, %d, "%s">}' % (
-        self.client_id, self.server_id, self.request_number, self.response_data)
+            self.client_id, self.server_id, self.request_number, self.response_data)
 
     def __eq__(self, other):
         return id(other) == id(self)
@@ -173,10 +173,21 @@ class PrimaryMessage(Message):
         super().__init__(data=data)'''
 
     def __init__(self, primary, backup, action):
-        super().__init__()
         self.action = action
         self.primary = primary
         self.backup = backup
+        data = action + "; "
+        
+        for primary_id in primary:
+            # Ex: "Primary S1 172.19.137.180 19620" means S1 is primary
+            data += constants.MAGIC_MSG_PRIMARY + " " + str(primary_id) + " " + primary[primary_id] + " " + str(constants.DEFAULT_APP_BACKUP_SERVER_PORT)  
+        data += "; "
+        
+        for backup_id in backup:
+            # Ex: "Backup S2 172.19.137.181 19620" means S2 is backup
+            data += constants.MAGIC_MSG_BACKUP + " " + str(backup_id) + " " + backup[backup_id] + " " + str(constants.DEFAULT_APP_BACKUP_SERVER_PORT)    
+            data += ", "
+        super().__init__(data=data)
 
     def serialize(self):
         '''
@@ -188,15 +199,16 @@ class PrimaryMessage(Message):
     def deserialize(cls, byte_data):
         assert isinstance(byte_data, bytes) or isinstance(byte_data, bytearray), "We can only deserialize a byte array"
         #
-        reqMessage = pickle.loads(byte_data)
-        if isinstance(reqMessage, ClientResponseMessage):
-            return reqMessage
+        req_message = pickle.loads(byte_data)
+        if isinstance(req_message, ClientResponseMessage):
+            return req_message
         else:
             return None
 
     def __repr__(self):
-        return '{ClientResponseMessage: <action-%s, primary-%s, backup-%s>}' % (
-        self.action, self.primary, self.backup)
+        return '{ClientResponseMessage: <server_action-%s, primary-%s, backup-%s>}' % (
+            self.action, self.primary, self.backup)
+
 
 class LFDGFDMessage(Message):
     '''
