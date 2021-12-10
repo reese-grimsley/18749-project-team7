@@ -138,7 +138,7 @@ def lfd_handler(sock, address):
             try:
                 msg = messages.deserialize(data)
             except pickle.UnpicklingError: 
-                logger.warning("could not deserialize data: %d" % data)
+                logger.warning("could not deserialize data: %s" % str(data))
 
             logger.debug(type(msg))
 
@@ -156,7 +156,7 @@ def lfd_handler(sock, address):
                         # primary_id = int(primary_id[1:])
 
                     if primary_id == server_id:
-                        logger.info("Add primary message received; this server (%d) is the new primary!" % server_id)
+                        logger.info("Add primary message received; this server (%s) is the new primary!" % server_id)
                         if is_primary is None:
                             logger.debug("Newly joined and assigned to be primary")
                             pass
@@ -201,7 +201,7 @@ def lfd_handler(sock, address):
                         for backup_id in msg.backup.keys():
                             backup_ip = msg.backup[backup_id]
                             if not addr_present(backup_locations, (backup_ip, backup_id)): #I AM HERE
-                                logger.debug("Adding known backup to list: (%s, %d)" % (backup_ip, backup_id))
+                                logger.debug("Adding known backup to list: (%s, %s)" % (backup_ip, backup_id))
                                 backup_locations.append((backup_ip, backup_id))
                                 new_backups +=1
                         logger.debug("Found %d new backups from GFD", new_backups)
@@ -216,7 +216,7 @@ def lfd_handler(sock, address):
                         # primary_id = int(primary_id[1:]) #expected format is 'SX', where X is the number of the server id
 
                         primary_ip = msg.primary[primary_id]
-                        logger.info("Backup pointed to primary with ID %d at IP (%s)" % (primary_ip, primary_id))
+                        logger.info("Backup pointed to primary with ID %d at IP (%s)" % (primary_id, primary_ip))
 
                         primary_location = (primary_ip, primary_id)
                         is_primary = False
@@ -274,7 +274,9 @@ def lfd_handler(sock, address):
             # sock.connect(address)
             time.sleep(1)
         except Exception as e:
-            logger.error(traceback.format_exc())
+            logger.error(e)
+            traceback.format_exc()
+
             
 def backup_handler(sock, address, input_queue:queue.Queue):
     '''
@@ -453,7 +455,7 @@ def primary_handler(address, input_queue:queue.Queue):
 
                 #should be receiving checkpoints or info for log replays
                 if isinstance(msg, messages.CheckpointMessage):
-                    logger.info("received checkpoint message from primary with ID %d", msg.primary_server_id)
+                    logger.info("received checkpoint message from primary with ID %s", msg.primary_server_id)
                     state_x = msg.x
                     state_y = msg.y
                     state_z = msg.z
