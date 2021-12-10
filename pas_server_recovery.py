@@ -495,7 +495,7 @@ def passive_server_handler(socket, address):
 
     elif is_primary:
         logger.debug("received new nonlocal connection. Is it a client or backup..")
-        index, is_backup_connection = addr_present(backup_locations, (address))
+        is_backup_connection, index = addr_present(backup_locations, (address))
         if is_backup_connection:
             logger.debug('Backup connected')
             try:
