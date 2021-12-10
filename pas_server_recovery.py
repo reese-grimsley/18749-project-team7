@@ -349,6 +349,7 @@ def client_handler(sock, address):
     global checkpoint_operations_ongoing #read & write
     global client_operations_ongoing #read & write
     global is_primary #read
+    global checkpoint_num #write
 
     num_failures = 0
 
