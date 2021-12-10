@@ -136,7 +136,9 @@ def lfd_handler(sock, address):
             msg = None
             try:
                 msg = messages.deserialize(data)
-            except pickle.UnpicklingError: logger.warning("could not deserialize data: %d" % data)
+            except pickle.UnpicklingError: 
+                logger.warning("could not deserialize data: %d" % data)
+                
             logger.debug(type(msg))
 
             if isinstance(msg, messages.LFDMessage):
