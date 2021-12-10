@@ -81,7 +81,10 @@ def parse_args():
 
 
 def addr_present(addr_list, addr):
-    logger.debug("search for address %s" % addr)
+    '''
+    Addr is a tuple. The first element is the IP address
+    '''
+    logger.debug("search for address %s" % addr[0])
     for i, a in enumerate(addr_list):
         logger.debug('addr %d is %s' % (i, a))
         if a[0] == addr[0]:
@@ -200,7 +203,8 @@ def lfd_handler(sock, address):
                         new_backups = 0
                         for backup_id in msg.backup.keys():
                             backup_ip = msg.backup[backup_id]
-                            if not addr_present(backup_locations, (backup_ip, backup_id)): #I AM HERE
+                            logger.debug("check backup ID %s at IP %s" % (backup_ip, backup_id))
+                            if not addr_present(backup_locations, (backup_ip, backup_id)): 
                                 logger.debug("Adding known backup to list: (%s, %s)" % (backup_ip, backup_id))
                                 backup_locations.append((backup_ip, backup_id))
                                 new_backups +=1
@@ -210,13 +214,11 @@ def lfd_handler(sock, address):
                     elif is_primary is None and primary_location[0] is None and primary_location[1] is None:
                         #There is a new backup; it's me!
                         logger.info("New backup, and it is me!")
-                        logger.debug(msg.primary)
-                        logger.debug(msg.backup)
                         primary_id = list(msg.primary.keys())[0]
                         # primary_id = int(primary_id[1:]) #expected format is 'SX', where X is the number of the server id
 
                         primary_ip = msg.primary[primary_id]
-                        logger.info("Backup pointed to primary with ID %d at IP (%s)" % (primary_id, primary_ip))
+                        logger.info("Backup pointed to primary with ID %s at IP (%s)" % (primary_id, primary_ip))
 
                         primary_location = (primary_ip, primary_id)
                         is_primary = False
@@ -274,8 +276,8 @@ def lfd_handler(sock, address):
             # sock.connect(address)
             time.sleep(1)
         except Exception as e:
-            logger.error(e)
-            traceback.format_exc()
+            logger.error(traceback.format_exc())
+            
 
             
 def backup_handler(sock, address, input_queue:queue.Queue):
@@ -329,7 +331,7 @@ def backup_handler(sock, address, input_queue:queue.Queue):
             # sock.connect(address)
             time.sleep(1)
         except Exception as e:
-            logger.error(e)
+            logger.error(traceback.format_exc())
 
 
     t = threading.currentThread()
@@ -426,7 +428,7 @@ def client_handler(sock, address):
 
             time.sleep(1)
         except Exception as e:
-            logger.error(e)
+            logger.error(traceback.format_exc())
             
 def primary_handler(address, input_queue:queue.Queue):
     '''
@@ -473,7 +475,7 @@ def primary_handler(address, input_queue:queue.Queue):
                 sock.connect((address, constants.DEFAULT_APP_SERVER_PORT))
                 time.sleep(1)
             except Exception as e:
-                logger.error(e)
+                logger.error(traceback.format_exc())
 
             try:
                 queue_item = input_queue.get_nowait()
@@ -510,9 +512,8 @@ def passive_server_handler(socket, address):
                 logger.info('backup at %s connected' % address)
                 backup_handler(socket, address, q)
             except Exception as e: 
-                logger.error(e)
-                traceback.format_exc()
-
+                logger.error(traceback.format_exc())
+                
         else:
             logger.info("Client connected")
             client_handler(socket, address)
