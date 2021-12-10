@@ -137,17 +137,20 @@ def lfd_handler(sock, address):
             try:
                 msg = messages.deserialize(data)
             except pickle.UnpicklingError: logger.warning("could not deserialize data: %d" % data)
+            logger.debug(type(msg))
 
             if isinstance(msg, messages.LFDMessage):
                 logger.info("Received from LFD: %s", msg.data)
                 respond_to_heartbeat(sock)
 
             elif isinstance(msg, messages.PrimaryMessage):
-                if msg.action is constants.ADD_PRIMARY:
-                    logger.info("LFD indicated the primary is changing: %s\nTODO: handle this", msg)
+                logger.info("Received PrimaryMessage (action %s) for updating connections: %s" % (msg.action, msg))
+                if msg.action == constants.ADD_PRIMARY:
+                    logger.info("LFD indicated the primary is changing: %s", msg)
                     primary_id = None
                     if len(msg.primary.keys()):
-                        primary_id = msg.primary.keys()[0]
+                        primary_id = list(msg.primary.keys())[0]
+                        primary_id = int(primary_id[1:])
 
                     if primary_id == server_id:
                         logger.info("Add primary message received; this server (%d) is the new primary!" % server_id)
@@ -187,7 +190,7 @@ def lfd_handler(sock, address):
                             primary_location = (primary_ip, primary_id)
 
 
-                elif msg.action is constants.ADD_BACKUP:
+                elif msg.action == constants.ADD_BACKUP:
                     logger.info("Add backup %s\n" % msg)
                     if is_primary:
                         logger.info('backups passed are now: %s', msg.backup)
@@ -204,7 +207,9 @@ def lfd_handler(sock, address):
                     elif is_primary is None and primary_location[0] is None and primary_location[1] is None:
                         #There is a new backup; it's me!
                         logger.info("New backup, and it is me!")
-                        primary_id = msg.primary.keys()[0]
+                        primary_id = list(msg.primary.keys())[0]
+                        primary_id = int(primary_id[1:]) #expected format is SX, where X is the number of the server id
+
                         primary_ip = msg.primary[primary_id]
 
                         primary_location = (primary_ip, primary_id)
@@ -216,7 +221,7 @@ def lfd_handler(sock, address):
                         
                     # if we are backup and the primary has not been assigned, assume this is 
 
-                elif msg.action is constants.REMOVE_BACKUP:
+                elif msg.action == constants.REMOVE_BACKUP:
                     logger.info("remove backup %s" % msg)
                     if is_primary:
                     
@@ -250,8 +255,11 @@ def lfd_handler(sock, address):
                 #if add backup and address is me, then spawn a thread for primary_handler
                 #if add backup and address is not me and I am not primary: do nothing. Doesn't concern me.
                 pass
-            else:
+            elif msg is not None:
                 logger.warning("unexpected message: %s", msg)
+            else:
+                logger.warning("LFD Connection is dead")
+                return
 
         except socket.timeout: pass
         except TimeoutError: pass

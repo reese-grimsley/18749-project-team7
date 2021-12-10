@@ -13,7 +13,7 @@ from helper import is_valid_ipv4, parse_addresses_file, addr_to_ip_port
 import messages
 
 
-DebugLogger.set_console_level(logging.WARN)
+DebugLogger.set_console_level(1)
 logger = DebugLogger.get_logger('client')
 
 kill_switch_engaged = False

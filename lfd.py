@@ -12,7 +12,8 @@ logger = DebugLogger.get_logger('lfd')
 server_response = 0
 server_fail = False
 #server_type = ""
-primary_msg  = ""
+# primary_msg  = "" # comment by Reese
+primary_msg = None
 def parse_args():
     parser = argparse.ArgumentParser(description="Local Fault Detector")
 
@@ -108,12 +109,16 @@ def run_lfd(lfd_socket, period, lfd_id):
                 lfd_socket = None
                 break
                 
-            if primary_msg  != "":
+            # if primary_msg  != "": #commment by Reese
+            if primary_msg  != "" and primary_msg is not None:
                 logger.info('Send S' + str(lfd_id) + ' : [%s]', primary_msg)
-                lfd_message = messages.LFDMessage(primary_msg)
-                lfd_bytes = lfd_message.serialize()
-                lfd_socket.sendall(lfd_bytes) 
-                primary_msg = ""
+                ##commented by Reese
+                # lfd_message = messages.LFDMessage(primary_msg)
+                # lfd_bytes = lfd_message.serialize()
+                # lfd_socket.sendall(lfd_bytes) 
+                lfd_socket.sendall(primary_msg.serialize())
+                # primary_msg = "" #comment by Reese
+                primary_msg = None
                 
             time.sleep(period)
 
@@ -164,7 +169,8 @@ def handle_gfd(lfd_socket, server_ip, lfd_id):
                 else:
                     server_type = "Backup"'''
                 logger.info(response_msg.data)
-                primary_msg = response_msg.data        
+                # primary_msg = response_msg.data #comment by Reese
+                primary_msg = response_msg   
                 
     except KeyboardInterrupt:
         logger.warning('Caught Keyboard Interrupt in local fault detector; exiting')

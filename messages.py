@@ -206,7 +206,7 @@ class PrimaryMessage(Message):
             return None
 
     def __repr__(self):
-        return '{ClientResponseMessage: <server_action-%s, primary-%s, backup-%s>}' % (
+        return '{PrimaryMessage: <server_action-%s, primary-%s, backup-%s>}' % (
             self.action, self.primary, self.backup)
 
 
