@@ -488,7 +488,7 @@ def passive_server_handler(socket, address):
     global backup_thread_info #write
 
     address = address[0] #only take the IP. Who cares about a client port... randomly assigned
-    if address[0] == '0.0.0.0' or address[0] == '127.0.0.1':
+    if address == '0.0.0.0' or address == '127.0.0.1':
         logger.info('LFD connected')
         lfd_handler(socket, address)
 
@@ -510,7 +510,7 @@ def passive_server_handler(socket, address):
             client_handler(socket, address)
 
     else:
-        logger.warn("Invalid connection arrived")
+        logger.warn("Invalid connection arrived: %s" % address)
 
 
 if __name__ == "__main__":
