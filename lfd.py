@@ -112,6 +112,7 @@ def run_lfd(lfd_socket, period, lfd_id):
             # if primary_msg  != "": #commment by Reese
             if primary_msg  != "" and primary_msg is not None:
                 logger.info('Send S' + str(lfd_id) + ' : [%s]', primary_msg)
+                
                 ##commented by Reese
                 # lfd_message = messages.LFDMessage(primary_msg)
                 # lfd_bytes = lfd_message.serialize()
@@ -143,7 +144,7 @@ def handle_gfd(lfd_socket, server_ip, lfd_id):
             response_bytes = lfd_socket.recv(constants.MAX_MSG_SIZE)
             response_msg = messages.deserialize(response_bytes)
             
-            if not response_msg.data or response_msg.data is None:
+            if response_msg is None or not response_msg.data or response_msg.data is None:
                 continue
                 
             logger.info("Received from GFD: [%s]", response_msg.data)
