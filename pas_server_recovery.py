@@ -438,6 +438,8 @@ def primary_handler(address, input_queue:queue.Queue):
     '''
     assert is_valid_ipv4(address), "address of client is not an IP address: %s" % address 
 
+    logger.info("Backup replica started thread to connect to primary")
+
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
         sock.settimeout(SOCKET_TIMEOUT_SECONDS)
         global is_primary #read
@@ -503,7 +505,7 @@ def passive_server_handler(socket, address):
 
     elif is_primary:
         logger.debug("received new nonlocal connection. Is it a client or backup..")
-        is_backup_connection, index = addr_present(backup_locations, (address, ))
+        is_backup_connection = addr_present(backup_locations, (address, ))
         if is_backup_connection:
             logger.debug('Backup connected')
             try:
