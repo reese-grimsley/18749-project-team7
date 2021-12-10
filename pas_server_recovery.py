@@ -121,7 +121,7 @@ def passive_application_server(ip, port):
 
 
 def lfd_handler(sock, address):
-    assert isinstance(sock, socket) or isinstance(sock, socket.socket), "not a socket; throw error in lfd handler"
+    assert isinstance(sock, socket.socket), "not a socket; throw error in lfd handler"
 
     global server_id #read
     global is_primary #read and write
@@ -265,7 +265,7 @@ def backup_handler(sock, address, input_queue:queue.Queue):
     '''
     The primary manages its connection tot he backup here. It should continue doing so while it is the primary
     '''
-    assert isinstance(sock, socket) or isinstance(sock, socket.socket), "not a socket; throw error in backup handler within primary replica"
+    assert isinstance(sock, socket.socket), "not a socket; throw error in backup handler within primary replica"
     assert is_valid_ipv4(address), "address of backup is not valid IP address: %s" % address 
 
     global state_x #read
@@ -325,7 +325,7 @@ def backup_handler(sock, address, input_queue:queue.Queue):
             
 
 def client_handler(sock, address):
-    assert isinstance(sock, socket) or isinstance(sock, socket.socket), "not a socket; throw error in client handler"
+    assert isinstance(sock, socket.socket), "not a socket; throw error in client handler"
     assert is_valid_ipv4(address), "address of client is not an IP address: %s" % address 
 
     global state_x #write
