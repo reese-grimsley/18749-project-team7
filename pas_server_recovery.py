@@ -88,9 +88,9 @@ def addr_present(addr_list, addr):
     for i, a in enumerate(addr_list):
         logger.debug('addr %d is %s' % (i, a))
         if a[0] == addr[0]:
-            return True, i
+            return True
 
-    return False, -1
+    return False
 
 def clear_queue(q:queue.Queue):
     with q.mutex:
@@ -199,11 +199,11 @@ def lfd_handler(sock, address):
                 elif msg.action == constants.ADD_BACKUP:
                     logger.info("Add backup %s\n" % msg)
                     if is_primary:
-                        logger.info('backups passed are now: %s', msg.backup)
+                        logger.info('backups passed: %s', msg.backup)
                         new_backups = 0
                         for backup_id in msg.backup.keys():
                             backup_ip = msg.backup[backup_id]
-                            logger.debug("check backup ID %s at IP %s" % (backup_ip, backup_id))
+                            logger.debug("check backup ID %s at IP %s" % (backup_id, backup_ip))
                             if not addr_present(backup_locations, (backup_ip, backup_id)): 
                                 logger.debug("Adding known backup to list: (%s, %s)" % (backup_ip, backup_id))
                                 backup_locations.append((backup_ip, backup_id))
@@ -503,7 +503,7 @@ def passive_server_handler(socket, address):
 
     elif is_primary:
         logger.debug("received new nonlocal connection. Is it a client or backup..")
-        is_backup_connection, index = addr_present(backup_locations, (address))
+        is_backup_connection, index = addr_present(backup_locations, (address, ))
         if is_backup_connection:
             logger.debug('Backup connected')
             try:
