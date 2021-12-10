@@ -138,7 +138,7 @@ def lfd_handler(sock, address):
                 msg = messages.deserialize(data)
             except pickle.UnpicklingError: logger.warning("could not deserialize data: %d" % data)
 
-            if isinstance(msg, messages.LFDMessage) and msg.data == constants.MAGIC_MSG_LFD_REQUEST:
+            if isinstance(msg, messages.LFDMessage):
                 logger.info("Received from LFD: %s", msg.data)
                 respond_to_heartbeat(sock)
 
