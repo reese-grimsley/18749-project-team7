@@ -81,8 +81,9 @@ def parse_args():
 
 
 def addr_present(addr_list, addr):
-
+    logger.debug("search for address %s" % addr)
     for i, a in enumerate(addr_list):
+        logger.debug('addr %d is %s' % (i, a))
         if a[0] == addr[0]:
             return True, i
 
@@ -496,6 +497,7 @@ def passive_server_handler(socket, address):
         logger.debug("received new nonlocal connection. Is it a client or backup..")
         index, is_backup_connection = addr_present(backup_locations, (address))
         if is_backup_connection:
+            logger.debug('Backup connected')
             try:
                 q = queue.Queue()
                 backup_thread_info.append((threading.currentThread(), q, address))
