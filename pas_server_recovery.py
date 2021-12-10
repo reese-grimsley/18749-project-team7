@@ -153,7 +153,7 @@ def lfd_handler(sock, address):
                     primary_id = None
                     if len(msg.primary.keys()):
                         primary_id = list(msg.primary.keys())[0]
-                        primary_id = int(primary_id[1:])
+                        # primary_id = int(primary_id[1:])
 
                     if primary_id == server_id:
                         logger.info("Add primary message received; this server (%d) is the new primary!" % server_id)
@@ -213,7 +213,7 @@ def lfd_handler(sock, address):
                         logger.debug(msg.primary)
                         logger.debug(msg.backup)
                         primary_id = list(msg.primary.keys())[0]
-                        primary_id = int(primary_id[1:]) #expected format is 'SX', where X is the number of the server id
+                        # primary_id = int(primary_id[1:]) #expected format is 'SX', where X is the number of the server id
 
                         primary_ip = msg.primary[primary_id]
                         logger.info("Backup pointed to primary with ID %d at IP (%s)" % (primary_ip, primary_id))
@@ -274,8 +274,7 @@ def lfd_handler(sock, address):
             # sock.connect(address)
             time.sleep(1)
         except Exception as e:
-            logger.error(e)
-            traceback.print_last()
+            logger.error(traceback.format_exc())
             
 def backup_handler(sock, address, input_queue:queue.Queue):
     '''
@@ -526,7 +525,9 @@ if __name__ == "__main__":
     ip = constants.CATCH_ALL_IP
     port = constants.DEFAULT_APP_SERVER_PORT
 
-    logger = DebugLogger.get_logger('passive_app_server-S'+str(server_id))
+    server_id = 'S' + str(server_id) #compliance..
+
+    logger = DebugLogger.get_logger('passive_app_server-'+server_id)
 
     logger.log(1, "******\n\n\nIf you are seeing this message, change the logging level!!!\n\n******\n")
     DebugLogger.setup_file_handler('./passive_replication_server_' + ip+':'+str(port)+'.log', level=1)
