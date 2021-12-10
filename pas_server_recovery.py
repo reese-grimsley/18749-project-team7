@@ -138,7 +138,7 @@ def lfd_handler(sock, address):
                 msg = messages.deserialize(data)
             except pickle.UnpicklingError: 
                 logger.warning("could not deserialize data: %d" % data)
-                
+
             logger.debug(type(msg))
 
             if isinstance(msg, messages.LFDMessage):
@@ -486,11 +486,14 @@ def passive_server_handler(socket, address):
     global is_primary #read
     global backup_locations #read
     global backup_thread_info #write
+
+    address = address[0] #only take the IP. Who cares about a client port... randomly assigned
     if address[0] == '0.0.0.0' or address[0] == '127.0.0.1':
         logger.info('LFD connected')
         lfd_handler(socket, address)
 
     elif is_primary:
+        logger.debug("received new nonlocal connection. Is it a client or backup..")
         index, is_backup_connection = addr_present(backup_locations, (address))
         if is_backup_connection:
             try:
@@ -500,10 +503,14 @@ def passive_server_handler(socket, address):
                 backup_handler(socket, address, q)
             except Exception as e: 
                 logger.error(e)
-
+                traceback.format_exc()
 
         else:
+            logger.info("Client connected")
             client_handler(socket, address)
+
+    else:
+        logger.warn("Invalid connection arrived")
 
 
 if __name__ == "__main__":
