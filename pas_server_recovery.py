@@ -252,7 +252,8 @@ def lfd_handler(sock, address):
                 pass
             else:
                 logger.warning("unexpected message: %s", msg)
-
+                
+        except socket.timeout: pass
         except TimeoutError: pass
         except OSError as oe:
             logger.error(oe)
