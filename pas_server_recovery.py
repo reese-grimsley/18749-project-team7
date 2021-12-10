@@ -252,7 +252,7 @@ def lfd_handler(sock, address):
                 pass
             else:
                 logger.warning("unexpected message: %s", msg)
-                
+
         except socket.timeout: pass
         except TimeoutError: pass
         except OSError as oe:
@@ -306,6 +306,7 @@ def backup_handler(sock, address, input_queue:queue.Queue):
                 logger.info('Checkpoint sent; %d backups still checkpointing' % checkpoint_operations_ongoing)
 
         except queue.Empty: pass
+        except socket.timeout: pass
         except TimeoutError: pass
         except OSError as oe:
             logger.error(oe)
@@ -397,7 +398,7 @@ def client_handler(sock, address):
 
                 checkpoint_msg_counter = 0
 
-
+        except socket.timeout: pass
         except TimeoutError: pass
         except OSError as oe:
             logger.error(oe)
@@ -448,7 +449,7 @@ def primary_handler(address, input_queue:queue.Queue):
 
                 # elif isinstance(msg, messages.LoggingMessage)
 
-
+            except socket.timeout: pass
             except TimeoutError: pass
             except OSError as oe:
                 logger.error(oe)
