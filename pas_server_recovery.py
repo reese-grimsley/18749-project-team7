@@ -210,10 +210,13 @@ def lfd_handler(sock, address):
                     elif is_primary is None and primary_location[0] is None and primary_location[1] is None:
                         #There is a new backup; it's me!
                         logger.info("New backup, and it is me!")
+                        logger.debug(msg.primary)
+                        logger.debug(msg.backup)
                         primary_id = list(msg.primary.keys())[0]
-                        primary_id = int(primary_id[1:]) #expected format is SX, where X is the number of the server id
+                        primary_id = int(primary_id[1:]) #expected format is 'SX', where X is the number of the server id
 
                         primary_ip = msg.primary[primary_id]
+                        logger.info("Backup pointed to primary with ID %d at IP (%s)" % (primary_ip, primary_id))
 
                         primary_location = (primary_ip, primary_id)
                         is_primary = False
@@ -272,6 +275,7 @@ def lfd_handler(sock, address):
             time.sleep(1)
         except Exception as e:
             logger.error(e)
+            traceback.print_last()
             
 def backup_handler(sock, address, input_queue:queue.Queue):
     '''
