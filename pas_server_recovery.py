@@ -48,7 +48,7 @@ primary_queue = queue.Queue()
 lock_var2 = threading.Lock()
 
 
-DebugLogger.set_console_level(1)
+DebugLogger.set_console_level(constants.LOGGING_LEVEL)
 logger = None 
 
 def parse_args():
@@ -160,6 +160,7 @@ def lfd_handler(sock, address):
 
                     if primary_id == server_id:
                         logger.info("Add primary message received; this server (%s) is the new primary!" % server_id)
+                        logger.critical("Replica %s assuming role of Primary" % server_id)
                         if is_primary is None:
                             logger.debug("Newly joined and assigned to be primary")
                             pass
@@ -187,6 +188,7 @@ def lfd_handler(sock, address):
                             logger.info("Primary does not appear to have changed")
                         else:
                             logger.info('Primary has changed from %s to %s' % (primary_location, (primary_ip, primary_id)))
+                            logger.critical("Primary changed from %s to %s" % (primary_location[1], primary_id))
                             #need to cancel curent backup thread and spawn a new one
                             primary_queue.put(messages.KillThreadMessage()) #kill old thread. It should also clear this Q
                             time.sleep(3 * SOCKET_TIMEOUT_SECONDS) #let the other thread exit before spawning the new one
@@ -206,6 +208,8 @@ def lfd_handler(sock, address):
                             logger.debug("check backup ID %s at IP %s" % (backup_id, backup_ip))
                             if not addr_present(backup_locations, (backup_ip, backup_id)): 
                                 logger.debug("Adding known backup to list: (%s, %s)" % (backup_ip, backup_id))
+                                logger.critical("Add backup replica %s to Primary %s" % (backup_id, server_id))
+
                                 backup_locations.append((backup_ip, backup_id))
                                 new_backups +=1
                         logger.debug("Found %d new backups from GFD", new_backups)
@@ -219,6 +223,8 @@ def lfd_handler(sock, address):
 
                         primary_ip = msg.primary[primary_id]
                         logger.info("Backup pointed to primary with ID %s at IP (%s)" % (primary_id, primary_ip))
+                        logger.critical("This replica (%s) assigned as backup to Primary replica %s"% (server_id, primary_id))
+
 
                         primary_location = (primary_ip, primary_id)
                         is_primary = False
@@ -322,6 +328,9 @@ def backup_handler(sock, address, input_queue:queue.Queue):
 
                 checkpoint_operations_ongoing = max(checkpoint_operations_ongoing-1, 0)
                 logger.info('Checkpoint sent; %d backups still checkpointing' % checkpoint_operations_ongoing)
+                if checkpoint_operations_ongoing <= 0:
+                    checkpoint_operations_ongoing = 0
+                    logger.warn("Last checkpoint sent; end quiesence in Primary")
 
         except queue.Empty: pass
         except socket.timeout: pass
@@ -401,9 +410,8 @@ def client_handler(sock, address):
 
             #checkpoint
             if checkpoint_msg_counter >= checkpoint_freq:
-                logger.info("Checkpoint")
+                logger.warn("Initite Queisence for Checkpoint in Primary")
                 while client_operations_ongoing > 0: pass #dirty wait to wait for client operations to start quiescence
-
 
                 if checkpoint_operations_ongoing == 0: #we hope only one client thread will take this condition
                     checkpoint_num = (checkpoint_num + 1)
@@ -447,6 +455,7 @@ def primary_handler(address, input_queue:queue.Queue):
         global state_y #write
         global state_z #write
         global checkpoint_num # write
+        global server_id #read
 
         sock.connect((address, constants.DEFAULT_APP_SERVER_PORT))
 
@@ -459,15 +468,14 @@ def primary_handler(address, input_queue:queue.Queue):
 
                 #should be receiving checkpoints or info for log replays
                 if isinstance(msg, messages.CheckpointMessage):
-                    logger.info("received checkpoint message from primary with ID %s", msg.primary_server_id)
+                    logger.critical("Backup %s received Checkpoint", server_id)
                     logger.info("Checkpoint: %s" % msg)
                     state_x = msg.x
                     state_y = msg.y
                     state_z = msg.z
                     checkpoint_num = msg.checkpoint_num
 
-
-                    logger.info("State is now: X=%d, Y=%d, Z=%d; Checkpoint #%d" %(state_x, state_y, state_z, checkpoint_num))
+                    logger.critical("Backup state after checkpoint #d: X=%d, Y=%d, Z=%d" %(checkpoint_num, state_x, state_y, state_z))
                     #ack through socket?
 
 

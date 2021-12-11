@@ -2,6 +2,7 @@
 import socket, argparse, time
 import DebugLogger, constants
 import threading
+import traceback
 from helper import is_valid_ipv4
 import messages
 
@@ -224,7 +225,7 @@ def poke_lfd(conn, period):
         logger.error("Heartbeat request timed out")
         success = False
     except Exception as e:
-        print(e)
+        logger.error(traceback.format_exc())
         
     return success
 
@@ -268,7 +269,7 @@ def serve_lfd(conn, addr, period):
             
             time.sleep(period)
     except Exception as e:
-        print(e)
+        logger.error(traceback.format_exc())
 
     finally: 
         conn.close()
