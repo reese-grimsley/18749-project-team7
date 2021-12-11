@@ -1,5 +1,8 @@
 '''Constant values for use across several files'''
 
+LOGGING_LEVEL = 30 #1: all message. 10: Debug. 20: info. 30: warn/warning. 40: error. 50: critical (critical is what all project-requirements should be printed as)
+
+
 LOCAL_HOST = '127.0.0.1'
 ECE_CLUSTER_ONE = 'ece001.ece.local.cmu.edu'
 ECE_CLUSTER_TWO = 'ece002.ece.local.cmu.edu'
