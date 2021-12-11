@@ -164,7 +164,7 @@ def lfd_handler(sock, address):
                             logger.debug("Newly joined and assigned to be primary")
                             pass
                         elif is_primary == False:
-                            logger.debug("were a backup, but promotied to primary")
+                            logger.debug("were a backup, but promoted to primary")
                             
                             # we were promoted to primary. Switch to that. Kill anything listening to the old primary. 
                             primary_queue.put(messages.KillThreadMessage()) #listener will neeed to clear this queue so any remaining messages don't matter
@@ -282,7 +282,7 @@ def lfd_handler(sock, address):
             
 def backup_handler(sock, address, input_queue:queue.Queue):
     '''
-    The primary manages its connection tot he backup here. It should continue doing so while it is the primary
+    The primary manages its connection to the backup here. It should continue doing so while it is the primary
     '''
     assert isinstance(sock, socket.socket), "not a socket; throw error in backup handler within primary replica"
     assert is_valid_ipv4(address), "address of backup is not valid IP address: %s" % address 
@@ -460,11 +460,14 @@ def primary_handler(address, input_queue:queue.Queue):
                 #should be receiving checkpoints or info for log replays
                 if isinstance(msg, messages.CheckpointMessage):
                     logger.info("received checkpoint message from primary with ID %s", msg.primary_server_id)
+                    logger.info("Checkpoint: %s" % msg)
                     state_x = msg.x
                     state_y = msg.y
                     state_z = msg.z
                     checkpoint_num = msg.checkpoint_num
 
+
+                    logger.info("State is now: X=%d, Y=%d, Z=%d; Checkpoint #%d" %(state_x, state_y, state_z, checkpoint_num))
                     #ack through socket?
 
 
@@ -474,8 +477,11 @@ def primary_handler(address, input_queue:queue.Queue):
             except TimeoutError: pass
             except OSError as oe:
                 logger.error(oe)
-                sock.connect((address, constants.DEFAULT_APP_SERVER_PORT))
                 time.sleep(1)
+                try: 
+                    sock.connect((address, constants.DEFAULT_APP_SERVER_PORT))
+                except Exception: logger.error(traceback.format_exc())
+
             except Exception as e:
                 logger.error(traceback.format_exc())
 

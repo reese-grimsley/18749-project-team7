@@ -162,7 +162,7 @@ class Client:
                     if connection_msg.connection_action == constants.GFD_ACTION_UPDATE:
                         pass
                         #TODO: update the connections, if needed
-                    elif constants.GFD_ACTION_DEAD:
+                    elif connection_msg.connection_action == constants.GFD_ACTION_DEAD:
                         chi_to_remove = None
                         for chi in connection_handler_info:
                             if chi[1] == connection_msg.server_id:
@@ -211,7 +211,7 @@ class Client:
         '''
         assert isinstance(input_queue, queue.PriorityQueue) and isinstance(duplication_handler_queue, queue.PriorityQueue), "queue objects should be from queue.PriorityQueue"
 
-        def reconnect(sock, ip, port, is_primary=None):
+        def reconnect(sock:socket.socket, ip, port, is_primary=None):
             connected = False
             if is_primary != False:
                 try:
@@ -359,13 +359,15 @@ class Client:
                         data = gfd_msg.data
                         
                         if constants.MAGIC_MSG_GFD_REQUEST in gfd_msg.data:
+                            self.logger.info("Received LFD message from GFD; inform it we are actually a client")
                             response = constants.MAGIC_MSG_RESPONSE_FROM_CLIENT + str(client_id)
                             client_msg = messages.LFDMessage(response)
                             client_msg_bytes = client_msg.serialize()
                             client_socket.sendall(client_msg_bytes)
                             self.logger.info(response)
                             
-                        elif constants.GFD_ACTION_DEAD is gfd_msg.action:
+                        elif constants.GFD_ACTION_DEAD == gfd_msg.action:
+                            self.logger.info("GFD siganlled ACTIN_DEAD")
                             self.logger.info(data)
                             ##send kill signal to thread and ClientConnectedMessage update to request distributor (handler itself should send to duplication handler)
                             server_id = int(gfd_msg.sid) 
@@ -388,13 +390,10 @@ class Client:
                                 client_server_handlers.remove(c_to_remove)
                             else: self.logger.warn("Didn't find replica [%d] to remove??", server_id)
 
-                        elif constants.GFD_ACTION_NEW is gfd_msg.action: 
+                        elif constants.GFD_ACTION_NEW == gfd_msg.action: 
+                            self.logger.info("GFD signalled ACTION_NEW")
                             self.logger.info(gfd_msg.data)
-                            #TODO: retrieve IP, port, ID, and primary status from the message
-                            #replica_ip = "127.0.0.1"
-                            #replica_port = constants.DEFAULT_APP_SERVER_PORT
-                            #server_id = 1
-                            #is_primary = True
+ 
                             replica_ip = gfd_msg.server_ip
                             replica_port = constants.DEFAULT_APP_SERVER_PORT
                             server_id = int(gfd_msg.sid)

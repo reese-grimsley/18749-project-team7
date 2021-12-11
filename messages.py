@@ -287,3 +287,6 @@ class CheckpointMessage(Message):
         self.z = z
         self.primary_server_id = primary_server_id
         self.checkpoint_num = checkpoint_num
+    
+    def __repr__(self):
+        return "<CheckpointMessage: x=%d, y=%d, z=%d; Primary %s; checkpoint #%d>" % (self.x, self.y, self.z, self.primary_server_id, self.checkpoint_num)
