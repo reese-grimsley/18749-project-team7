@@ -76,10 +76,26 @@ def register_membership(data, conn):
     server_ip = response_list[len(response_list) - 1]
     server_id = response_list[len(response_list) - 3]
 
-    '''if config == 0:
+    if config == 0:
         primary[server_id] = str(server_ip)
         IS_PRIMARY = True
-        logger.info("Active replication: Assign " + server_id + " as primary.")'''
+        logger.info("Active replication: Assign " + server_id + " as primary.")
+
+        server_type = "Primary" if IS_PRIMARY else "Backup"
+        server = str(server_type) + " " + str(server_id) + " " + str(server_ip)
+        
+        if server in dead_list and len(membership) > 0:
+            checkpoint_sender = membership[0]
+            # TODO: ask checkpoint sender send checkpoint to backing 
+        
+        if server not in membership:
+            server_info = str(server_id) + " " + str(server_ip)
+            logger.info("Add active replication " + server + " to membership")
+            membership.append(server)
+            conn_dict[server_id] = conn
+            print_membership(membership)
+
+    
 
     if config and len(primary) == 0:  # set primary server and send primary msg to that server
         primary[server_id] = str(server_ip)
