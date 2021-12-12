@@ -8,6 +8,7 @@ import messages
 
 membership = []
 client_membership = []
+dead_list = {}
 logger = DebugLogger.get_logger('gfd')
 config = 1  # passive
 primary = {}  # at most one server id
@@ -95,8 +96,6 @@ def register_membership(data, conn):
             conn_dict[server_id] = conn
             print_membership(membership)
 
-    
-
     if config and len(primary) == 0:  # set primary server and send primary msg to that server
         primary[server_id] = str(server_ip)
         IS_PRIMARY = True
@@ -165,6 +164,8 @@ def cancel_membership(data, conn):
     server_id = response_list[len(response_list) - 3]
     # server = str(server_type) + " " + str(server_id) + " : " + str(server_ip)
     # logger.info("Remove " + server + " out membership")
+
+    # TODO: If active, update deadlist and removed from membership and primary
 
     server_type = "Primary" if server_id in primary else "Backup"
     server = str(server_type) + " " + str(server_id) + " " + str(server_ip)
