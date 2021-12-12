@@ -210,8 +210,8 @@ def start_server_conn(ip, port, period, recipient, lfdID):
             try:
                 lfd_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                 lfd_socket.settimeout(period + 2)
-                lfd_socket.connect((ip, port))
-                #lfd_socket.connect((constants.LOCAL_HOST, port))
+                # lfd_socket.connect((ip, port))
+                lfd_socket.connect((constants.LOCAL_HOST, port)) #The replica assumes the LFD will connect through local host. This is important. -Reese
                 logger.info('Connected to %s', ip)
                 if recipient is "gfd":
                     thread = threading.Thread(target=handle_gfd, args=[lfd_socket, server_ip, lfdID], daemon=1)

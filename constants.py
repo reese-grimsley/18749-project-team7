@@ -1,6 +1,6 @@
 '''Constant values for use across several files'''
 
-LOGGING_LEVEL = 30 #1: all message. 10: Debug. 20: info. 30: warn/warning. 40: error. 50: critical (critical is what all project-requirements should be printed as)
+LOGGING_LEVEL = 1 #1: all message. 10: Debug. 20: info. 30: warn/warning. 40: error. 50: critical (critical is what all project-requirements should be printed as)
 
 
 LOCAL_HOST = '127.0.0.1'

@@ -468,7 +468,6 @@ class Client:
                                     request_distributor_queue.put((constants.MSG_PRIORITY_CONTROL, copy.copy(client_connected_msg))) #copy to avoid any changes that thread could make
                                     duplication_handler_queue.put((constants.MSG_PRIORITY_CONTROL, copy.copy(client_connected_msg)))
 
-                                csh_old_primary[5] = False
                                 csh_new_primary[5] = True
 
                                 #send update messages to each thread tracking the replicas
@@ -477,10 +476,12 @@ class Client:
                                 request_distributor_queue.put((constants.MSG_PRIORITY_CONTROL, copy.copy(client_connected_msg_primary))) #copy to avoid any changes that thread could make
                                 duplication_handler_queue.put((constants.MSG_PRIORITY_CONTROL, copy.copy(client_connected_msg_primary)))
 
-                                # update messages for old primary (now a backup)
-                                client_connected_msg_backup = ClientServerConnectionMessage(csh_old_primary[2], constants.GFD_ACTION_UPDATE, is_primary=csh_old_primary[5], client_input_queue=csh_old_primary[1])
-                                request_distributor_queue.put((constants.MSG_PRIORITY_CONTROL, copy.copy(client_connected_msg_backup))) #copy to avoid any changes that thread could make
-                                duplication_handler_queue.put((constants.MSG_PRIORITY_CONTROL, copy.copy(client_connected_msg_backup)))
+                                if csh_old_primary is not None:
+                                    # update messages for old primary (now a backup)
+                                    csh_old_primary[5] = False
+                                    client_connected_msg_backup = ClientServerConnectionMessage(csh_old_primary[2], constants.GFD_ACTION_UPDATE, is_primary=csh_old_primary[5], client_input_queue=csh_old_primary[1])
+                                    request_distributor_queue.put((constants.MSG_PRIORITY_CONTROL, copy.copy(client_connected_msg_backup))) #copy to avoid any changes that thread could make
+                                    duplication_handler_queue.put((constants.MSG_PRIORITY_CONTROL, copy.copy(client_connected_msg_backup)))
 
                         else:
                             self.logger.warning("GFD:: Received unexpected data: %s", data)
