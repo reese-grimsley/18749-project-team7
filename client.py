@@ -2,6 +2,7 @@
 
 
 from os import kill
+from pickle import TRUE
 import socket
 import argparse
 import time, threading, queue
@@ -60,6 +61,16 @@ class ClientServerConnectionMessage():
         return isinstance(other, ClientServerConnectionMessage) and id(other) == id(self)
     def __lt__(self, other):
         if not isinstance(other, ClientServerConnectionMessage): return False
+
+class ClientReplicaInfo():
+    def __init__(self, thread_handle, thread_queue, replica_id, replica_ip, replica_port, is_primary):
+
+        self.thread_handle = thread_handle
+        self.thread_queue = thread_queue
+        self.replica_id = replica_id
+        self.replica_ip = replica_ip
+        self.replica_port = replica_port
+        self.is_primary = is_primary
 
 class Client:
     def __init__(self, address_info=[], client_id=1, gfd_ip=""):
@@ -405,14 +416,15 @@ class Client:
 
                             # If this replica is already known by the client and has a different port and IP, we need to remove the old one and add the new one back
                             for csh in client_server_handlers:
-                                if csh[2] == server_id:
-                                    if (csh[3] != replica_ip or csh[4] != replica_port):
+                                # if csh[2] == server_id:
+                                if csh.replica_id == server_id:
+                                    if (csh.replica_ip != replica_ip or csh.replica_port != replica_port):
                                         self.logger.warning("Received message to add new server [%d] for one we're already connected to!", server_id)
                                         client_disconnected_msg = ClientServerConnectionMessage(server_id, connection_action=constants.GFD_ACTION_DEAD)
                                         request_distributor_queue.put((constants.MSG_PRIORITY_CONTROL, copy.copy(client_disconnected_msg))) #copy to avoid any changes that thread could make
                                         duplication_handler_queue.put((constants.MSG_PRIORITY_CONTROL, copy.copy(client_disconnected_msg)))
 
-                                        csh[1].put((constants.MSG_PRIORITY_MGMT ,messages.KillThreadMessage()))
+                                        csh.thread_queue.put((constants.MSG_PRIORITY_MGMT ,messages.KillThreadMessage()))
                                         client_server_handlers.remove(csh) #this may be unsafe within an iterator
                                         break
                                     else:
@@ -422,7 +434,9 @@ class Client:
                             client_input_queue = queue.PriorityQueue()
                             client_thread = threading.Thread(target=self.run_client_server_handler, args=[replica_ip, replica_port, server_id, client_input_queue, duplication_handler_queue, is_primary], daemon=True)
                             client_thread.start()
-                            client_server_handlers.append((client_thread, client_input_queue, server_id, replica_ip, replica_port, is_primary))
+                            client_replica_info = ClientReplicaInfo(client_thread, client_input_queue, server_id, replica_ip, replica_port, is_primary)
+                            # client_server_handlers.append((client_thread, client_input_queue, server_id, replica_ip, replica_port, is_primary))
+                            client_server_handlers.append(client_replica_info)
 
                             #inform other threads that a new replica is present
                             client_connected_msg = ClientServerConnectionMessage(server_id, connection_action=constants.GFD_ACTION_NEW, is_primary=is_primary, client_input_queue=client_input_queue)
@@ -445,14 +459,16 @@ class Client:
                                 csh_new_primary = None
                                 csh_old_primary = None
                                 for csh in client_server_handlers:
-                                    if csh[2] == primary_server_id:
-                                        if (csh[3] == replica_ip and csh[4] == replica_port):
+                                    if not isinstance(csh, ClientReplicaInfo): continue
+
+                                    if csh.replica_id == server_id:
+                                        if (csh.replica_ip != replica_ip or csh.replica_port != replica_port):
                                             csh_new_primary = csh
                                         else:
                                             self.logger.error("Error; client server handler is being updated for a replica we don't know about!! PANIK")
                                             raise ValueError("attempted to updated replica at (%s:%d) to primary for a different address (%s:%d", (csh[3], csh[4], replica_ip, replica_port))
                                             #we could delete the old backup and add the new one we're updaitng 
-                                    elif csh[2] == old_primary_id:
+                                    elif csh.replica_id == old_primary_id:
                                         csh_old_primary = csh
 
                                 # We were told to update the primary to a replica we don't know of. We need to add this.
@@ -460,7 +476,7 @@ class Client:
                                     client_input_queue = queue.PriorityQueue()
                                     client_thread = threading.Thread(target=self.run_client_server_handler, args=[replica_ip, replica_port, server_id, client_input_queue, duplication_handler_queue, is_primary], daemon=True)
                                     client_thread.start()
-                                    csh_new_primary = (client_thread, client_input_queue, server_id, replica_ip, replica_port, is_primary)
+                                    csh_new_primary = ClientReplicaInfo(client_thread, client_input_queue, server_id, replica_ip, replica_port, is_primary)
                                     client_server_handlers.append(csh_new_primary)
 
                                     # inform the request distributor and the duplication handler
@@ -468,7 +484,8 @@ class Client:
                                     request_distributor_queue.put((constants.MSG_PRIORITY_CONTROL, copy.copy(client_connected_msg))) #copy to avoid any changes that thread could make
                                     duplication_handler_queue.put((constants.MSG_PRIORITY_CONTROL, copy.copy(client_connected_msg)))
 
-                                csh_new_primary[5] = True
+                                csh_new_primary.is_primary = True
+                                # csh_new_primary[5] = True #cannot assign to element in tuple. Immutable..
 
                                 #send update messages to each thread tracking the replicas
                                 #update messages for the new primary
@@ -478,8 +495,8 @@ class Client:
 
                                 if csh_old_primary is not None:
                                     # update messages for old primary (now a backup)
-                                    csh_old_primary[5] = False
-                                    client_connected_msg_backup = ClientServerConnectionMessage(csh_old_primary[2], constants.GFD_ACTION_UPDATE, is_primary=csh_old_primary[5], client_input_queue=csh_old_primary[1])
+                                    csh_old_primary.is_primary = False
+                                    client_connected_msg_backup = ClientServerConnectionMessage(csh_old_primary.replica_id, constants.GFD_ACTION_UPDATE, is_primary=csh_old_primary.is_primary, client_input_queue=csh_old_primary.thread_queue)
                                     request_distributor_queue.put((constants.MSG_PRIORITY_CONTROL, copy.copy(client_connected_msg_backup))) #copy to avoid any changes that thread could make
                                     duplication_handler_queue.put((constants.MSG_PRIORITY_CONTROL, copy.copy(client_connected_msg_backup)))
 

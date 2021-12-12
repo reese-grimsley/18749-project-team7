@@ -332,7 +332,7 @@ def backup_handler(sock, address, input_queue:queue.Queue):
                 logger.info('Checkpoint sent; %d backups still checkpointing' % checkpoint_operations_ongoing)
                 if checkpoint_operations_ongoing <= 0:
                     checkpoint_operations_ongoing = 0
-                    logger.warn("Last checkpoint sent; end quiesence in Primary")
+                    logger.warn("Last checkpoint sent; ended quiesence in Primary")
 
         except queue.Empty: pass
         except socket.timeout: pass
@@ -479,7 +479,7 @@ def primary_handler(address, input_queue:queue.Queue):
                     state_z = msg.z
                     checkpoint_num = msg.checkpoint_num
 
-                    logger.critical("Backup state after checkpoint #d: X=%d, Y=%d, Z=%d" %(checkpoint_num, state_x, state_y, state_z))
+                    logger.critical("Backup state after checkpoint #%d: X=%d, Y=%d, Z=%d" %(checkpoint_num, state_x, state_y, state_z))
                     #ack through socket?
 
 
