@@ -510,7 +510,7 @@ def primary_handler(address, input_queue:queue.Queue):
     clear_queue(input_queue)
     logger.info('Exiting thread for connection to primary (from backup)')
 
-def passive_server_handler(socket, address):
+def passive_server_handler(socket:socket.socket, address):
     '''
     Top level function to call on a newly created connection. Decide if this is the LFD, a backup or a client.
 
@@ -545,6 +545,7 @@ def passive_server_handler(socket, address):
 
     else:
         logger.warn("Invalid connection arrived: %s" % address)
+        socket.close()
 
 
 if __name__ == "__main__":

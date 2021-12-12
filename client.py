@@ -178,6 +178,16 @@ class Client:
                     if connection_msg.connection_action == constants.GFD_ACTION_UPDATE:
                         pass
                         self.logger.info("Request distributor received ACTION_UPDATE. Assume the replica ID is for the switched primary.")
+                        if connection_msg.is_primary:
+                            primary_server_id = connection_msg.server_id
+                            #send a message to the thread handling this replica, and tell it that it is the new primary
+                            for chi in connection_handler_info:
+                                server_id = chi[0]
+                                if server_id == connection_msg.server_id:
+                                    client_handler_queue = chi[1]
+                                    client_handler_queue.put((constants.MSG_PRIORITY_CONTROL, connection_msg))        
+                                    break
+
 
                         #TODO: update the connections, if needed
                     elif connection_msg.connection_action == constants.GFD_ACTION_DEAD:
@@ -237,9 +247,9 @@ class Client:
                     self.logger.debug('Connect to replica at %s:%d' % (ip, port))
                     sock.connect((ip, port))
                     connected = True
-                    self.logger.debug('reconnected to replica at ')
+                    self.logger.debug('Cconnected to replica!')
                 except OSError as e:
-                    self.logger.warn("failed to reconnect")
+                    self.logger.warning("failed to reconnect")
                     self.logger.error(traceback.format_exc())
 
             return connected
@@ -248,59 +258,61 @@ class Client:
 
         kill_signal_received = False
         is_connected = False
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client_socket:
-            is_connected = reconnect(client_socket, ip, port, is_primary=is_primary)
-            while not kill_signal_received:
+        client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        is_connected = reconnect(client_socket, ip, port, is_primary=is_primary)
+        while not kill_signal_received:
 
-                # while is_connected and not kill_signal_received:
-                # read from input queue with small timeout
-                new_request = None
-                try:
-                    new_request = input_queue.get(block=True, timeout=constants.QUEUE_TIMEOUT)[1] #entries are tuples of form (priority, msg)
-                except queue.Empty:
-                    pass #nothing to do. 
+            # while is_connected and not kill_signal_received:
+            # read from input queue with small timeout
+            new_request = None
+            try:
+                new_request = input_queue.get(block=True, timeout=constants.QUEUE_TIMEOUT)[1] #entries are tuples of form (priority, msg)
+            except queue.Empty:
+                pass #nothing to do. 
 
-                if new_request is not None: 
-                    pass #probably just empty queue and timed out
-                    self.logger.info("new messages received by handler for replcia %d: %s" % (server_id, new_request))
+            if new_request is not None: 
+                pass #probably just empty queue and timed out
+                self.logger.info("new messages received by handler for replica %d: %s" % (server_id, new_request))
 
-                if isinstance(new_request, messages.KillThreadMessage):
-                    self.logger.info('Received thread kill signal -- exiting thread for server [%d]', server_id)
-                    kill_signal_received = True
+            if isinstance(new_request, messages.KillThreadMessage):
+                self.logger.info('Received thread kill signal -- exiting thread for server [%d]', server_id)
+                kill_signal_received = True
 
-                elif isinstance(new_request, messages.ClientRequestMessage):
-                    try: 
-                        if is_primary or is_primary is None:
-                            if is_connected or reconnect(client_socket, ip, port, is_primary=is_primary):
-                                is_connected = True
+            elif isinstance(new_request, messages.ClientRequestMessage):
+                try: 
+                    if is_primary or is_primary is None:
+                        if is_connected or reconnect(client_socket, ip, port, is_primary=is_primary):
+                            is_connected = True
 
-                                self.logger.info("Sending request to server id %d" % server_id)
-                                response = self.do_request_response(new_request, client_socket)
-                                if response is None:
-                                    is_connected = False # assuming if we get no response, that the connection is dead
-                                    # if the response didn't come and we kill the connection, we should still send something to the duplication handler so 
-                                else:
-                                    duplication_handler_queue.put((constants.MSG_PRIORITY_DATA, response))
+                            self.logger.info("Sending request to server id %d" % server_id)
+                            response = self.do_request_response(new_request, client_socket)
+                            if response is None:
+                                is_connected = False # assuming if we get no response, that the connection is dead
+                                # if the response didn't come and we kill the connection, we should still send something to the duplication handler so 
+                            else:
+                                duplication_handler_queue.put((constants.MSG_PRIORITY_DATA, response))
 
-                    except TimeoutError as to:
-                        self.logger.info('client timed out. Kill connection and try again')
-                        is_connected = False
+                except TimeoutError as to:
+                    self.logger.info('client timed out. Kill connection and try again')
+                    is_connected = False
 
-                elif isinstance(new_request, ClientServerConnectionMessage):
-                    self.logger.info("ClientConnectionMessage: %s" % new_request)
-                    pass    
-                    #TODO: update this as the primary or not the primary...
-                    if new_request.server_id == server_id and new_request.connection_action != constants.GFD_ACTION_DEAD:
-                        is_primary = new_request.is_primary
-                        is_connected = reconnect(client_socket, ip, port, is_primary=is_primary)
-
-                elif new_request is not None:
-                    self.logger.warning('Unable to determine what to do with incoming message [%s] in run_client_server_handler for id %d', new_request, server_id)
-
-
-                if is_primary != False and not is_connected:
-                    self.logger.info("Try connecting to replica %d" % server_id)
+            elif isinstance(new_request, ClientServerConnectionMessage):
+                self.logger.info(" replica-handler received ClientConnectionMessage: %s" % new_request)
+                pass    
+                if new_request.server_id == server_id and new_request.connection_action != constants.GFD_ACTION_DEAD:
+                    time.sleep(3) # There's a race condition here. Give the server a moment to hear back from the RM that it is the new primary, or we'll be refused
+                    is_primary = new_request.is_primary
+                    client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                     is_connected = reconnect(client_socket, ip, port, is_primary=is_primary)
+
+            elif new_request is not None:
+                self.logger.warning('Unable to determine what to do with incoming message [%s] in run_client_server_handler for id %d', new_request, server_id)
+
+
+            if is_primary != False and not is_connected:
+                self.logger.info("Try connecting to replica %d" % server_id)
+                client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                is_connected = reconnect(client_socket, ip, port, is_primary=is_primary)
 
         self.logger.info('Exiting thread for connection to server %d', server_id)
 
@@ -332,13 +344,13 @@ class Client:
 
         except socket.timeout as to:
             self.logger.error('Socket timeout: %s', to)
-            raise to
-            # response_message = None
+            # raise to
+            response_message = None
 
         except Exception as e:
-            self.logger.error(e) 
-            raise e
-            # response_message = None
+            self.logger.error(traceback.format_exc()) 
+            # raise e
+            response_message = None
 
         return response_message
 
@@ -412,7 +424,7 @@ class Client:
                             if c_to_remove is not None:
                                 self.logger.info("Removing handler thread for replica %d: %s", server_id, c_to_remove)
                                 client_server_handlers.remove(c_to_remove)
-                            else: self.logger.warn("Didn't find replica [%d] to remove??", server_id)
+                            else: self.logger.warning("Didn't find replica [%d] to remove??", server_id)
 
                         elif constants.GFD_ACTION_NEW == gfd_msg.action: 
                             self.logger.info("GFD signalled ACTION_NEW")
