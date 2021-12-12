@@ -302,6 +302,8 @@ def backup_handler(sock, address, input_queue:queue.Queue):
     global server_id #read
     global checkpoint_num #read
 
+    logger.info("Received connection from backup to primary. Backup address: %s" % (address[0]))
+
     sock.settimeout(SOCKET_TIMEOUT_SECONDS)
     while is_primary: #if we become the backup, this should automatically exit
         msg = None
@@ -423,6 +425,7 @@ def client_handler(sock, address):
 
                 while checkpoint_operations_ongoing > 0: pass #dirty wait for checkpointint operations to end quiescence
 
+                logger.warn("End quiescence in client-handler")
                 checkpoint_msg_counter = 0
 
         except socket.timeout: pass
@@ -446,7 +449,7 @@ def primary_handler(address, input_queue:queue.Queue):
     '''
     assert is_valid_ipv4(address), "address of client is not an IP address: %s" % address 
 
-    logger.info("Backup replica started thread to connect to primary")
+    logger.info("Backup replica started thread to connect to primary at addresss [%s]" % address)
 
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
         sock.settimeout(SOCKET_TIMEOUT_SECONDS)
@@ -457,6 +460,7 @@ def primary_handler(address, input_queue:queue.Queue):
         global checkpoint_num # write
         global server_id #read
 
+        time.sleep(5) # we have a race condition; primary may learn about the backup too late and consider it to be a client.
         sock.connect((address, constants.DEFAULT_APP_SERVER_PORT))
 
         while is_primary == False:
