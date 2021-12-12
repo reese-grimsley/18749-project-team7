@@ -302,7 +302,7 @@ def backup_handler(sock, address, input_queue:queue.Queue):
     global server_id #read
     global checkpoint_num #read
 
-    logger.info("Received connection from backup to primary. Backup address: %s" % (address[0]))
+    logger.info("Received connection from backup to primary. Backup address: %s" % (address))
 
     sock.settimeout(SOCKET_TIMEOUT_SECONDS)
     while is_primary: #if we become the backup, this should automatically exit
@@ -460,8 +460,13 @@ def primary_handler(address, input_queue:queue.Queue):
         global checkpoint_num # write
         global server_id #read
 
-        time.sleep(5) # we have a race condition; primary may learn about the backup too late and consider it to be a client.
-        sock.connect((address, constants.DEFAULT_APP_SERVER_PORT))
+        time.sleep(2) # we have a race condition; primary may learn about the backup too late and consider it to be a client.
+        not_connected = False
+        while not_connected:
+            try:
+                sock.connect((address, constants.DEFAULT_APP_SERVER_PORT))
+                not_connected = True # should only get here if we successfully connected
+            except socket.timeout: pass
 
         while is_primary == False:
             msg = None

@@ -234,11 +234,13 @@ class Client:
             connected = False
             if is_primary != False:
                 try:
+                    self.logger.debug('Connect to replica at %s:%d' % (ip, port))
                     sock.connect((ip, port))
                     connected = True
                     self.logger.debug('reconnected to replica at ')
                 except OSError as e:
                     self.logger.warn("failed to reconnect")
+                    self.logger.error(traceback.format_exc())
 
             return connected
 
@@ -284,8 +286,8 @@ class Client:
                         self.logger.info('client timed out. Kill connection and try again')
                         is_connected = False
 
-                #TODO: add ClientServerConnectionMessage to update who is the primary
                 elif isinstance(new_request, ClientServerConnectionMessage):
+                    self.logger.info("ClientConnectionMessage: %s" % new_request)
                     pass    
                     #TODO: update this as the primary or not the primary...
                     if new_request.server_id == server_id and new_request.connection_action != constants.GFD_ACTION_DEAD:

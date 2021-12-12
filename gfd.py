@@ -245,7 +245,11 @@ def cancel_membership(data, conn):
             client_primary_msgs = messages.GFDClientMessage(primary[new_primary_id], new_primary_id_num, True, constants.GFD_ACTION_UPDATE)
             client_primary_msgs_bytes = client_primary_msgs.serialize()
             client_conn_value = client_conn_dict[client_conn_key]
-            client_conn_value.sendall(client_primary_msgs_bytes)
+            try:
+                client_conn_value.sendall(client_primary_msgs_bytes)
+            except: 
+                logger.error("Failed to send UPDATE message to client %s" % client_conn_key)
+                logger.error(traceback.format_exc())
 
 
 def parse_membership(member):
@@ -360,6 +364,8 @@ def serve_lfd(conn, addr, period):
 def start_conn(ip, port, period):
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as gfd_socket:
         try:
+            gfd_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1) # More portable to use socket.SO_REUSEADDR than SO_REUSEPORT.
+
             gfd_socket.bind((ip, port))
             gfd_socket.listen()
 
