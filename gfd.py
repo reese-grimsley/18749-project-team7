@@ -119,8 +119,11 @@ def register_membership(data, conn):
             conn_value = conn_dict[conn_key]
             conn_value.sendall(primary_msg_bytes)
         for client_conn_key in client_conn_dict:
+            primary_id_num = primary_id[1]
+            client_primary_msgs = messages.GFDClientMessage(primary[primary_id], primary_id_num, True, constants.GFD_ACTION_UPDATE)
+            client_primary_msgs_bytes = client_primary_msgs.serialize()
             client_conn_value = client_conn_dict[client_conn_key]
-            client_conn_value.sendall(primary_msg_bytes)
+            client_conn_value.sendall(client_primary_msgs_bytes)
     
     #if config == 0:
 
@@ -192,8 +195,11 @@ def cancel_membership(data, conn):
             conn_value.sendall(primary_msg_bytes)
         # tell all servers info of the new primary server
         for client_conn_key in client_conn_dict:
+            new_primary_id_num = new_primary_id[1]
+            client_primary_msgs = messages.GFDClientMessage(primary[new_primary_id], new_primary_id_num, True, constants.GFD_ACTION_UPDATE)
+            client_primary_msgs_bytes = client_primary_msgs.serialize()
             client_conn_value = client_conn_dict[client_conn_key]
-            client_conn_value.sendall(primary_msg_bytes)
+            client_conn_value.sendall(client_primary_msgs_bytes)
 
 
 def parse_membership(member):
