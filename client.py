@@ -56,7 +56,7 @@ class ClientServerConnectionMessage():
         self.client_input_queue = client_input_queue
 
     def __repr__(self):
-        return '{ClientConnectedMessage: S%d connected:%s}' % (self.server_id, self.connection_action)
+        return '{ClientConnectedMessage: S%d action:%s}' % (self.server_id, self.connection_action)
     def __eq__(self, other):
         return isinstance(other, ClientServerConnectionMessage) and id(other) == id(self)
     def __lt__(self, other):
@@ -71,6 +71,9 @@ class ClientReplicaInfo():
         self.replica_ip = replica_ip
         self.replica_port = replica_port
         self.is_primary = is_primary
+    
+    def __repr__(self):
+        return "{ClientReplicaInfo: ID [%d]; replica at %s:%d; primary_status: %d" % (self.replica_id, self.replica_ip, self.replica_port, self.is_primary)
 
 class Client:
     def __init__(self, address_info=[], client_id=1, gfd_ip=""):
@@ -162,21 +165,26 @@ class Client:
                     kill_signal_received = True
 
                 elif isinstance(msg, ClientServerConnectionMessage):
-                    self.logger.info("Received Client Connection mgmt Message; %s", msg)
+                    self.logger.info("req_distributor::: Received Client Connection mgmt Message; %s", msg)
                     connection_msg = msg
                     if connection_msg.is_primary:
+                        self.logger.debug("Detected changed primary in ClientServerConnectionMessage; go from (%d) to (%d)" % (primary_server_id, msg.server_id))
                         primary_server_id = msg.server_id
+                    self.logger.info(connection_handler_info)
 
                     if connection_msg.connection_action == constants.GFD_ACTION_NEW:
                         if connection_msg.server_id >= 0 and isinstance(connection_msg.client_input_queue, queue.PriorityQueue): 
                             connection_handler_info.append((connection_msg.server_id, connection_msg.client_input_queue))
                     if connection_msg.connection_action == constants.GFD_ACTION_UPDATE:
                         pass
+                        self.logger.info("Request distributor received ACTION_UPDATE. Assume the replica ID is for the switched primary.")
+
                         #TODO: update the connections, if needed
                     elif connection_msg.connection_action == constants.GFD_ACTION_DEAD:
                         chi_to_remove = None
                         for chi in connection_handler_info:
-                            if chi[1] == connection_msg.server_id:
+                            server_id = chi[0]
+                            if server_id == connection_msg.server_id:
                                 chi_to_remove = chi
                                 if primary_server_id == connection_msg.server_id:
                                     primary_server_id = constants.NULL_SERVER_ID
@@ -250,10 +258,11 @@ class Client:
                 except queue.Empty:
                     pass #nothing to do. 
 
-                if new_request is None: 
+                if new_request is not None: 
                     pass #probably just empty queue and timed out
+                    self.logger.info("new messages received by handler for replcia %d: %s" % (server_id, new_request))
 
-                elif isinstance(new_request, messages.KillThreadMessage):
+                if isinstance(new_request, messages.KillThreadMessage):
                     self.logger.info('Received thread kill signal -- exiting thread for server [%d]', server_id)
                     kill_signal_received = True
 
@@ -281,12 +290,14 @@ class Client:
                     #TODO: update this as the primary or not the primary...
                     if new_request.server_id == server_id and new_request.connection_action != constants.GFD_ACTION_DEAD:
                         is_primary = new_request.is_primary
+                        is_connected = reconnect(client_socket, ip, port, is_primary=is_primary)
 
-                else:
+                elif new_request is not None:
                     self.logger.warning('Unable to determine what to do with incoming message [%s] in run_client_server_handler for id %d', new_request, server_id)
 
 
                 if is_primary != False and not is_connected:
+                    self.logger.info("Try connecting to replica %d" % server_id)
                     is_connected = reconnect(client_socket, ip, port, is_primary=is_primary)
 
         self.logger.info('Exiting thread for connection to server %d', server_id)
@@ -378,7 +389,7 @@ class Client:
                             self.logger.info(response)
                             
                         elif constants.GFD_ACTION_DEAD == gfd_msg.action:
-                            self.logger.info("GFD siganlled ACTIN_DEAD")
+                            self.logger.info("GFD signalled ACTION_DEAD")
                             self.logger.info(data)
                             ##send kill signal to thread and ClientConnectedMessage update to request distributor (handler itself should send to duplication handler)
                             server_id = int(gfd_msg.sid) 
@@ -390,11 +401,11 @@ class Client:
                             #kil handler thread
                             c_to_remove = None
                             for c in client_server_handlers: #elements of form (client_thread, client_input_queue, server_id)
-                                if c[2] == server_id:
-                                    c[1].put((constants.MSG_PRIORITY_MGMT, messages.KillThreadMessage()))
+                                if c.replica_id == server_id:
+                                    c.thread_queue.put((constants.MSG_PRIORITY_MGMT, messages.KillThreadMessage()))
                                     c_to_remove = c
                                     if primary_server_id == server_id:
-                                        self.logger.error("Primary killed without replacement")
+                                        self.logger.error("Primary killed without replacement; setting primary id to null (-1)")
                                         primary_server_id = constants.NULL_SERVER_ID
                             if c_to_remove is not None:
                                 self.logger.info("Removing handler thread for replica %d: %s", server_id, c_to_remove)
@@ -410,7 +421,6 @@ class Client:
                             server_id = int(gfd_msg.sid)
                             is_primary = gfd_msg.is_primary
 
-                            old_primary_id = primary_server_id
                             if is_primary and server_id != primary_server_id:
                                 primary_server_id = server_id
 
@@ -449,11 +459,11 @@ class Client:
                             server_id = int(gfd_msg.sid)
                             is_primary = gfd_msg.is_primary
 
-                            old_primary_id = primary_server_id
                             #we need to update the replica we know as 'primary'
                             if is_primary and server_id != primary_server_id:
-                                self.logger.info("Updating the primary server replica from %d to %d" % (old_primary_id, primary_server_id))
+                                old_primary_id = primary_server_id
                                 primary_server_id = server_id
+                                self.logger.info("Updating the primary server replica from %d to %d" % (old_primary_id, primary_server_id))
 
                                 # Get the client/server info for the old replicas
                                 csh_new_primary = None
@@ -462,11 +472,11 @@ class Client:
                                     if not isinstance(csh, ClientReplicaInfo): continue
 
                                     if csh.replica_id == server_id:
-                                        if (csh.replica_ip != replica_ip or csh.replica_port != replica_port):
+                                        if (csh.replica_ip == replica_ip and csh.replica_port == replica_port):
                                             csh_new_primary = csh
                                         else:
                                             self.logger.error("Error; client server handler is being updated for a replica we don't know about!! PANIK")
-                                            raise ValueError("attempted to updated replica at (%s:%d) to primary for a different address (%s:%d", (csh[3], csh[4], replica_ip, replica_port))
+                                            raise ValueError("attempted to updated replica S%d at (%s:%d) to primary for a different address (%s:%d)", (csh.replica_id, csh.replica_ip, csh.replica_port, replica_ip, replica_port))
                                             #we could delete the old backup and add the new one we're updaitng 
                                     elif csh.replica_id == old_primary_id:
                                         csh_old_primary = csh
@@ -489,7 +499,7 @@ class Client:
 
                                 #send update messages to each thread tracking the replicas
                                 #update messages for the new primary
-                                client_connected_msg_primary = ClientServerConnectionMessage(csh_new_primary[2], constants.GFD_ACTION_UPDATE, is_primary=csh_new_primary[5], client_input_queue=csh_new_primary[1])
+                                client_connected_msg_primary = ClientServerConnectionMessage(csh_new_primary.replica_id, constants.GFD_ACTION_UPDATE, is_primary=csh_new_primary.is_primary, client_input_queue=csh_new_primary.thread_queue)
                                 request_distributor_queue.put((constants.MSG_PRIORITY_CONTROL, copy.copy(client_connected_msg_primary))) #copy to avoid any changes that thread could make
                                 duplication_handler_queue.put((constants.MSG_PRIORITY_CONTROL, copy.copy(client_connected_msg_primary)))
 
@@ -514,7 +524,7 @@ class Client:
 
         for csh in client_server_handlers:
             self.logger.info("Kill client: %s", csh)
-            csh[1].put((constants.MSG_PRIORITY_MGMT ,messages.KillThreadMessage()))
+            csh.thread_queue.put((constants.MSG_PRIORITY_MGMT ,messages.KillThreadMessage()))
         self.logger.info("Exiting thread for GFD")
 
     def run_duplication_handler(self, response_queue:queue.PriorityQueue):
@@ -573,8 +583,10 @@ class Client:
                 # increment active servers as a new server has established connection with the client
                 elif(isinstance(msg, ClientServerConnectionMessage)): 
                     if msg.connection_action == constants.GFD_ACTION_NEW:
+                        self.logger.debug('duplication_handler::: server connection added')
                         num_active_servers = (num_active_servers + 1)
                     elif msg.connection_action == constants.GFD_ACTION_DEAD:
+                        self.logger.debug('duplication_handler::: server connection dead')
                         num_active_servers = (num_active_servers - 1)  
 
                     if msg.is_primary:
