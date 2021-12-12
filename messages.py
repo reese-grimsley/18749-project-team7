@@ -156,21 +156,6 @@ class PrimaryMessage(Message):
     '''
     A message for the global fault detector to send to LFD
     '''
-    '''def __init__(self, primary, backup, action):
-        # message would be like: ACTION; PRIMARY; BACKUP1, BACKUP2, ...
-        data = action + "; "
-        
-        for primary_id in primary:
-            # Ex: "Primary S1 172.19.137.180 19620" means S1 is primary
-            data += constants.MAGIC_MSG_PRIMARY + " " + str(primary_id) + " " + primary[primary_id] + " " + str(constants.DEFAULT_APP_BACKUP_SERVER_PORT)  
-        data += "; "
-        
-        for backup_id in backup:
-            # Ex: "Backup S2 172.19.137.181 19620" means S2 is backup
-            data += constants.MAGIC_MSG_BACKUP + " " + str(backup_id) + " " + backup[backup_id] + " " + str(constants.DEFAULT_APP_BACKUP_SERVER_PORT)    
-            data += ", "
-            
-        super().__init__(data=data)'''
 
     def __init__(self, primary, backup, action):
         self.action = action

@@ -16,7 +16,7 @@ gfd_conn = False
 # server_type = ""
 # primary_msg  = "" # comment by Reese
 primary_msg = None
-
+send_checkpoint_msg = None
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Local Fault Detector")
@@ -94,8 +94,8 @@ def run_lfd(lfd_socket, period, lfd_id):
     global server_fail
     global primary_msg
     global server_connection
+    global send_checkpoint_msg
     global server_response
-
     try:
         while True:
             now = time.time()
@@ -137,7 +137,12 @@ def run_lfd(lfd_socket, period, lfd_id):
                 lfd_socket.sendall(primary_msg.serialize())
                 # primary_msg = "" #comment by Reese
                 primary_msg = None
-
+            
+            if send_checkpoint_msg is not None:
+                logger.info('Send S' + str(lfd_id) + ' : [%s]', send_checkpoint_msg)
+                lfd_socket.sendall(send_checkpoint_msg.serialize())
+                send_checkpoint_msg = None
+                
             time.sleep(period)
 
             # wait for the next period
@@ -184,14 +189,13 @@ def handle_gfd(lfd_socket, server_ip, lfd_id):
                 lfd_bytes = lfd_response.serialize()
                 lfd_socket.sendall(lfd_bytes)
             if constants.MAGIC_MSG_PRIMARY in response_msg.data:
-                '''if is_primary(response_msg.data, lfd_id) :
-                    server_type = "Primary"
-                else:
-                    server_type = "Backup"'''
                 logger.info(response_msg.data)
                 # primary_msg = response_msg.data #comment by Reese
                 primary_msg = response_msg
-
+            if constants.SEND_CHECKPOINT in response_msg.data:
+                logger.info(response_msg.data)     
+                send_checkpoint_msg = response_msg
+                
     except KeyboardInterrupt:
         logger.warning('Caught Keyboard Interrupt in local fault detector; exiting')
 
@@ -206,8 +210,8 @@ def start_server_conn(ip, port, period, recipient, lfdID):
             try:
                 lfd_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                 lfd_socket.settimeout(period + 2)
-                # lfd_socket.connect((ip, port))
-                lfd_socket.connect((constants.LOCAL_HOST, port))
+                lfd_socket.connect((ip, port))
+                #lfd_socket.connect((constants.LOCAL_HOST, port))
                 logger.info('Connected to %s', ip)
                 if recipient is "gfd":
                     thread = threading.Thread(target=handle_gfd, args=[lfd_socket, server_ip, lfdID], daemon=1)
@@ -217,7 +221,6 @@ def start_server_conn(ip, port, period, recipient, lfdID):
                     thread = threading.Thread(target=run_lfd, args=[lfd_socket, period, lfdID], daemon=1)
                     server_connection = True
                     thread.start()
-                    # break
 
             except KeyboardInterrupt:
                 logger.warning('Caught Keyboard Interrupt in local fault detector; exiting')

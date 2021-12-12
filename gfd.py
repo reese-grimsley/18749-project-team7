@@ -56,17 +56,24 @@ def get_membership_index(server_info):
 
 
 def build_message(action):
-    port = constants.DEFAULT_APP_BACKUP_SERVER_PORT
-    # primary_msg = messages.PrimaryMessage(primary_id, backup, conn_dict)
+    
     primary_msg = messages.PrimaryMessage(primary, backup, action)
-
+    
     logger.info(primary_msg.action)
-
+    
     for backup_id in backup:
         logger.info("gfd have backup: " + str(backup_id) + " " + backup[backup_id])
 
     return primary_msg
 
+def build_checkpoint_message(action, server_id, server_ip):
+    server_info = {}
+    server_info[server_id] = server_ip
+    if config == 0:
+        send_checkpoint_msg = messages.PrimaryMessage(server_info, {}, action)  
+        logger.info(send_checkpoint_msg.action)
+    
+    return send_checkpoint_msg
 
 def register_membership(data, conn):
     IS_PRIMARY = False
@@ -81,66 +88,76 @@ def register_membership(data, conn):
         primary[server_id] = str(server_ip)
         IS_PRIMARY = True
         logger.info("Active replication: Assign " + server_id + " as primary.")
-
+    
         server_type = "Primary" if IS_PRIMARY else "Backup"
         server = str(server_type) + " " + str(server_id) + " " + str(server_ip)
-        
-        if server in dead_list and len(membership) > 0:
-            checkpoint_sender = membership[0]
+        print(dead_list)
+        print(int(len(primary)))
+        if server_id in list(dead_list.keys()) and len(primary) > 0:
+            
+            checkpoint_sender = list(primary.keys())[0]    
+            # First, GFD sends message to LFD, telling to send checkpoint
+            send_checkpoint_msg = build_checkpoint_message(constants.SEND_CHECKPOINT, server_id, server_ip)
+            send_checkpoint_msg_bytes = send_checkpoint_msg.serialize()
+            sender_conn = conn_dict[checkpoint_sender]
+            logger.info("Notify " +  checkpoint_sender + " to send checkpoint to " + server_id)
+            sender_conn.sendall(send_checkpoint_msg_bytes)
+            dead_list.pop(server_id)
             # TODO: ask checkpoint sender send checkpoint to backing 
         
         if server not in membership:
             server_info = str(server_id) + " " + str(server_ip)
             logger.info("Add active replication " + server + " to membership")
             membership.append(server)
+            primary[server_id] = server_ip
             conn_dict[server_id] = conn
             print_membership(membership)
-
-    if config and len(primary) == 0:  # set primary server and send primary msg to that server
-        primary[server_id] = str(server_ip)
-        IS_PRIMARY = True
-        logger.info("Assign " + server_id + " as primary.")
-
-    server_type = "Primary" if IS_PRIMARY else "Backup"
-    server = str(server_type) + " " + str(server_id) + " " + str(server_ip)
-
-    if server not in membership:
-        server_info = str(server_id) + " " + str(server_ip)
-        if (server_info in s for s in membership):
-            idx = get_membership_index(server_info)
-            if idx != -1:
-                info = membership[idx]
-                if "Primary" in info:
-                    return
-                membership.pop(idx)
-        logger.info("Add " + server + " to membership")
-        membership.append(server)
-        if IS_PRIMARY is False:
-            backup[server_id] = str(server_ip)
-        conn_dict[server_id] = conn
-        print_membership(membership)
-
-    if config and len(primary) == 1:  # send primary info to current server
-        primary_id = list(primary.keys())[0]
-        # logger.info(primary_id)
-        # primary_msg = messages.PrimaryMessage(primary_id)
-        if IS_PRIMARY is True:  # add primary
-            primary_msg = build_message(constants.ADD_PRIMARY)
-        else:  # add backup
-            primary_msg = build_message(constants.ADD_BACKUP)
-
-        primary_msg_bytes = primary_msg.serialize()
-        for conn_key in conn_dict:
-            conn_value = conn_dict[conn_key]
-            conn_value.sendall(primary_msg_bytes)
-        for client_conn_key in client_conn_dict:
-            primary_id_num = primary_id[1]
-            client_primary_msgs = messages.GFDClientMessage(primary[primary_id], primary_id_num, True, constants.GFD_ACTION_UPDATE)
-            client_primary_msgs_bytes = client_primary_msgs.serialize()
-            client_conn_value = client_conn_dict[client_conn_key]
-            client_conn_value.sendall(client_primary_msgs_bytes)
     
-    #if config == 0:
+    else:   
+        if config and len(primary) == 0:  # set primary server and send primary msg to that server
+            primary[server_id] = str(server_ip)
+            IS_PRIMARY = True
+            logger.info("Assign " + server_id + " as primary.")
+    
+        server_type = "Primary" if IS_PRIMARY else "Backup"
+        server = str(server_type) + " " + str(server_id) + " " + str(server_ip)
+    
+        if server not in membership:
+            server_info = str(server_id) + " " + str(server_ip)
+            if (server_info in s for s in membership):
+                idx = get_membership_index(server_info)
+                if idx != -1:
+                    info = membership[idx]
+                    if "Primary" in info:
+                        return
+                    membership.pop(idx)
+            logger.info("Add " + server + " to membership")
+            membership.append(server)
+            if IS_PRIMARY is False:
+                backup[server_id] = str(server_ip)
+            conn_dict[server_id] = conn
+            print_membership(membership)
+    
+        if config and len(primary) == 1:  # send primary info to current server
+            primary_id = list(primary.keys())[0]
+            # logger.info(primary_id)
+            # primary_msg = messages.PrimaryMessage(primary_id)
+            if IS_PRIMARY is True:  # add primary
+                primary_msg = build_message(constants.ADD_PRIMARY)
+            else:  # add backup
+                primary_msg = build_message(constants.ADD_BACKUP)
+    
+            primary_msg_bytes = primary_msg.serialize()
+            for conn_key in conn_dict:
+                conn_value = conn_dict[conn_key]
+                conn_value.sendall(primary_msg_bytes)
+            for client_conn_key in client_conn_dict:
+                primary_id_num = primary_id[1]
+                client_primary_msgs = messages.GFDClientMessage(primary[primary_id], primary_id_num, True, constants.GFD_ACTION_UPDATE)
+                client_primary_msgs_bytes = client_primary_msgs.serialize()
+                client_conn_value = client_conn_dict[client_conn_key]
+                client_conn_value.sendall(client_primary_msgs_bytes)
+        
 
 
 
@@ -176,6 +193,12 @@ def cancel_membership(data, conn):
         conn_dict.pop(server_id)
         print_membership(membership)
 
+    if config == 0:
+        primary.pop(server_id)
+        logger.info("Add " + server_id + " to dead list")
+        dead_list[server_id] = server_ip
+        
+        
     if config and len(primary) == 1:  # if passive and there exist primary
         logger.info("Check whether is primary to remove")
         if server_id == list(primary.keys())[0]:  # if primary
