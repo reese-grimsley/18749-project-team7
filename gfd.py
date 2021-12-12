@@ -13,6 +13,7 @@ config = 1  # passive
 primary = {}  # at most one server id
 backup = {}
 conn_dict = {}
+client_conn_dict = {}
 
 
 def parse_args():
@@ -75,6 +76,11 @@ def register_membership(data, conn):
     server_ip = response_list[len(response_list) - 1]
     server_id = response_list[len(response_list) - 3]
 
+    '''if config == 0:
+        primary[server_id] = str(server_ip)
+        IS_PRIMARY = True
+        logger.info("Active replication: Assign " + server_id + " as primary.")'''
+
     if config and len(primary) == 0:  # set primary server and send primary msg to that server
         primary[server_id] = str(server_ip)
         IS_PRIMARY = True
@@ -112,9 +118,15 @@ def register_membership(data, conn):
         for conn_key in conn_dict:
             conn_value = conn_dict[conn_key]
             conn_value.sendall(primary_msg_bytes)
+        for client_conn_key in client_conn_dict:
+            client_conn_value = client_conn_dict[client_conn_key]
+            client_conn_value.sendall(primary_msg_bytes)
+    
+    #if config == 0:
 
 
-def register_client(data):
+
+def register_client(data, conn):
     response = str(data)
     response_list = response.split()
     client_id = response_list[len(response_list) - 1]
@@ -123,6 +135,7 @@ def register_client(data):
         logger.info("Add " + client + " to membership")
         client_membership.append(client)
         print_membership(client_membership)
+        client_conn_dict[client] = conn
 
 
 def cancel_membership(data, conn):
@@ -172,11 +185,15 @@ def cancel_membership(data, conn):
         backup.pop(new_primary_id)
         primary_msg = build_message(constants.ADD_PRIMARY)
         primary_msg_bytes = primary_msg.serialize()
-        # tell the new primary server that it has been changed to primary
+        # tell all servers info of the new primary server
         # conn.sendall(primary_msg_bytes)
         for conn_key in conn_dict:
             conn_value = conn_dict[conn_key]
             conn_value.sendall(primary_msg_bytes)
+        # tell all servers info of the new primary server
+        for client_conn_key in client_conn_dict:
+            client_conn_value = client_conn_dict[client_conn_key]
+            client_conn_value.sendall(primary_msg_bytes)
 
 
 def parse_membership(member):
@@ -269,7 +286,7 @@ def serve_lfd(conn, addr, period):
             elif constants.MAGIC_MSG_RESPONSE_FROM_CLIENT in response_msg.data:
                 logger.info('Received from Client %s: [%s]', str(addr), response_msg.data)
                 print("start register client")
-                register_client(response_msg.data)
+                register_client(response_msg.data, conn)
                 print("start serve client")
                 serve_client(conn)
                 print("finish client")
