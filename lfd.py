@@ -94,6 +94,7 @@ def run_lfd(lfd_socket, period, lfd_id):
     global server_fail
     global primary_msg
     global server_connection
+    global server_response
 
     try:
         while True:
@@ -115,6 +116,7 @@ def run_lfd(lfd_socket, period, lfd_id):
                 num_failures += 1
                 server_fail = True  # notify gfd
                 server_connection = False
+                server_response = 0
                 logger.warning("Server failed to respond; %d failures", num_failures)
                 '''num_failures += 1 #some light instrumentation
                 logger.warning("Server failed to respond; %d failures (of %d heartbeats)", num_failures, num_heartbeats)
@@ -215,7 +217,7 @@ def start_server_conn(ip, port, period, recipient, lfdID):
                     thread = threading.Thread(target=run_lfd, args=[lfd_socket, period, lfdID], daemon=1)
                     server_connection = True
                     thread.start()
-                    break
+                    # break
 
             except KeyboardInterrupt:
                 logger.warning('Caught Keyboard Interrupt in local fault detector; exiting')
