@@ -149,9 +149,11 @@ def register_membership(data, conn):
     
             primary_msg_bytes = primary_msg.serialize()
             for conn_key in conn_dict:
+                logger.info("Register membership: notice server " + conn_key)
                 conn_value = conn_dict[conn_key]
                 conn_value.sendall(primary_msg_bytes)
             for client_conn_key in client_conn_dict:
+                logger.info("Register membership: notice client " + client_conn_key)
                 primary_id_num = primary_id[1]
                 client_primary_msgs = messages.GFDClientMessage(primary[primary_id], primary_id_num, True, constants.GFD_ACTION_UPDATE)
                 client_primary_msgs_bytes = client_primary_msgs.serialize()
@@ -190,7 +192,9 @@ def cancel_membership(data, conn):
         server_info = str(server_id) + " " + str(server_ip)
         logger.info("Remove " + server + " out membership")
         membership.remove(server)
-        conn_dict.pop(server_id)
+        if server_id in conn_dict:
+            conn_dict.pop(server_id)
+            logger.info("Remove " + server_id + " from conn_dict")
         print_membership(membership)
 
     if config == 0:
@@ -231,10 +235,12 @@ def cancel_membership(data, conn):
         # tell all servers info of the new primary server
         # conn.sendall(primary_msg_bytes)
         for conn_key in conn_dict:
+            logger.info("Cancel membership: notice server " + conn_key)
             conn_value = conn_dict[conn_key]
             conn_value.sendall(primary_msg_bytes)
         # tell all servers info of the new primary server
         for client_conn_key in client_conn_dict:
+            logger.info("Cancel membership: notice client " + client_conn_key)
             new_primary_id_num = new_primary_id[1]
             client_primary_msgs = messages.GFDClientMessage(primary[new_primary_id], new_primary_id_num, True, constants.GFD_ACTION_UPDATE)
             client_primary_msgs_bytes = client_primary_msgs.serialize()
