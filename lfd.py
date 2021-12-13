@@ -57,8 +57,9 @@ def poke_server(client_socket, lfd_id):
     global temp_dest_ip
     global flag
     try: 
-        if flag == 1:
-            quiet_message = messages.QuietMessage(temp_source_ip, temp_dest_ip)
+        # flag will be 1 when we start quiescence, flag will be 2 when we trying to end quiescence
+        if flag != 0:
+            quiet_message = messages.QuietMessage(temp_source_ip, temp_dest_ip, flag)
             quiet_bytes = quiet_message.serialize()
             client_socket.sendall(quiet_bytes)
             flag = 0
@@ -71,6 +72,10 @@ def poke_server(client_socket, lfd_id):
             response_bytes = client_socket.recv(constants.MAX_MSG_SIZE)
             response_msg = messages.deserialize(response_bytes)
             if constants.MAGIC_MSG_LFD_RESPONSE in response_msg.data:
+                logger.info('Received from S' + str(lfd_id) + ' : [%s]', response_msg.data)
+                success = True
+                server_response += 1
+            if constants.MAGIC_MSG_QUIESCENCE_DONE in response_msg.data:
                 logger.info('Received from S' + str(lfd_id) + ' : [%s]', response_msg.data)
                 success = True
                 server_response += 1
@@ -218,7 +223,7 @@ def handle_gfd(lfd_socket, server_ip, lfd_id):
                 temp_msg = messages.deserialize(data)
                 temp_source_ip = temp_msg.source_ip
                 temp_dest_ip = temp_msg.dest_ip
-                flag = 1
+                flag = temp_msg.flag
 
 
             if server_response == 1:
