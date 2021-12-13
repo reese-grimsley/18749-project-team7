@@ -7,7 +7,7 @@ from helper import is_valid_ipv4
 membership = []
 logger = DebugLogger.get_logger('gfd')
 # when this flag is set, gfd sends quiescence is done message
-quiet_flag = false
+quiet_flag = False
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Global Fault Detector")

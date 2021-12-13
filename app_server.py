@@ -17,7 +17,8 @@ PORT = constants.DEFAULT_APP_SERVER_PORT
 # The all powerful global variable
 state_x = 0
 
-my_ip = 0
+#this is causing error
+#my_ip = 0
 
 am_i_quiet = False
 quiet_done = False
