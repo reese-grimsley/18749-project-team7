@@ -80,7 +80,7 @@ def serve_lfd(conn, addr, period):
             # if quiet_flag is true, we send quiet is done to all the LFD + servers
             if (quiet_flag):
                 logger.info("Escaping quiescence...")
-                quiet_message = messages.QuietMessage(membership[0], membership[-1], 1)
+                quiet_message = messages.QuietMessage(membership[0], membership[-1], 2)
                 quiet_bytes = quiet_message.serialize()
                 conn.sendall(quiet_bytes)
                 quiet_flag = false
