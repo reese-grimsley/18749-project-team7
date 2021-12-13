@@ -18,6 +18,7 @@ MAGIC_MSG_RESPONSE_FROM_LFD = "lfd sends heartbeat to gfd"
 MAGIC_MSG_SERVER_START = "Server started"
 MAGIC_MSG_SERVER_FAIL = "Server failed"
 MAGIC_MSG_LFD_REQUEST_SERVER = "Request for server heartbeat"
+MAGIC_MSG_QUIESCENCE_DONE = "quiescence is accomplished in the server side"
 MAGIC_MSG_QUIET = "go to quiescence" 
 
 
