@@ -18,6 +18,8 @@ heartbeat_period = 0
 gfd_ip = 0
 gfd_port = 0 
 lfd_id = 0
+#flag = 1
+
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Local Fault Detector")
@@ -127,6 +129,7 @@ def run_lfd(lfd_socket, period, lfd_id):
     num_failures = 0
     num_heartbeats = 0
     global server_fail
+    #global flag
     try: 
         while True:
             now = time.time()
@@ -134,15 +137,28 @@ def run_lfd(lfd_socket, period, lfd_id):
             # server_good = True
             # make the request; should finish (timeout) before the next heartbeat needs to occur
             num_heartbeats += 1
+            server_response = 0
             try: 
                 server_good = poke_server(lfd_socket, lfd_id)
+                #flag = 0
+                
             except Exception as e:
                 logger.debug('Exception caught; assume server is not good..')
                 logger.debug(e)
                 server_good = False
+                #flag = 0
 
             if server_good:
                 logger.info("Server responded correctly; waiting until next heartbeat")
+                '''
+                if flag == 0:
+                    response = constants.MAGIC_MSG_SERVER_START + " at S" + str(lfd_id) + ": " + str(constants.LOCAL_HOST)
+                    lfd_socket.sendall(str.encode(response))
+                    logger.info("LFD sends respawn server request to GFD")
+                    flag = 1
+                '''    
+                    
+
             else:
                 num_failures += 1
                 server_fail = True            # notify gfd
@@ -222,6 +238,8 @@ def start_conn(ip, port, period, recipient, lfdID):
 
 def make_conn_to_server(server_ip, server_port, heartbeat_period, gfd_ip, gfd_port, lfd_id):
 
+    global server_response
+    server_response = 0
     try:
         start_conn(ip=gfd_ip, port=gfd_port, period=heartbeat_period, recipient="gfd", lfdID=lfd_id)
         temp = True
