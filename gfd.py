@@ -70,6 +70,7 @@ def poke_lfd(conn, period):
     return success
 
 def serve_lfd(conn, addr, period):
+    global membership
     try:
         lfd_status = True
         while True:
@@ -86,6 +87,15 @@ def serve_lfd(conn, addr, period):
             elif constants.MAGIC_MSG_SERVER_START in data:
                 register_membership(data)
                 success = True
+
+                if len(membership) >= 2:
+                    #send a go to quiescence msg to all servers
+                    logger.info("Entering quiescence...")
+                    quiet_message = messages.QuietMessage(membership[0], membership[-1])
+                    quiet_bytes = quiet_message.serialize()
+                    conn.sendall(quiet_bytes)
+
+
 
             if not lfd_status:
                 logger.debug("Something wrong with lfd")

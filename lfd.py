@@ -18,7 +18,9 @@ heartbeat_period = 0
 gfd_ip = 0
 gfd_port = 0 
 lfd_id = 0
-#flag = 1
+flag = 0
+temp_source_ip = 0
+temp_dest_ip = 0
 
 
 def parse_args():
@@ -51,17 +53,29 @@ def poke_server(client_socket, lfd_id):
     #create a new socket every single time; restart from scratch
     success = False
     global server_response
+    global temp_source_ip
+    global temp_dest_ip
+    global flag
     try: 
-        lfd_message = messages.LFDMessage()
-        lfd_bytes = lfd_message.serialize()
-        # client_socket.sendall(bytes(constants.MAGIC_MSG_LFD_REQUEST, encoding='utf-8'))
-        client_socket.sendall(lfd_bytes)
-        response_bytes = client_socket.recv(constants.MAX_MSG_SIZE)
-        response_msg = messages.deserialize(response_bytes)
-        if constants.MAGIC_MSG_LFD_RESPONSE in response_msg.data:
-            logger.info('Received from S' + str(lfd_id) + ' : [%s]', response_msg.data)
-            success = True
-            server_response += 1
+        if flag == 1:
+            quiet_message = messages.QuietMessage(temp_source_ip, temp_dest_ip)
+            quiet_bytes = quiet_message.serialize()
+            client_socket.sendall(quiet_bytes)
+            flag = 0
+            
+        else:   
+            lfd_message = messages.LFDMessage()
+            lfd_bytes = lfd_message.serialize()
+            # client_socket.sendall(bytes(constants.MAGIC_MSG_LFD_REQUEST, encoding='utf-8'))
+            client_socket.sendall(lfd_bytes)
+            response_bytes = client_socket.recv(constants.MAX_MSG_SIZE)
+            response_msg = messages.deserialize(response_bytes)
+            if constants.MAGIC_MSG_LFD_RESPONSE in response_msg.data:
+                logger.info('Received from S' + str(lfd_id) + ' : [%s]', response_msg.data)
+                success = True
+                server_response += 1
+
+            
             
     except socket.timeout as st:
         logger.error("Heartbeat request timed out")
@@ -187,6 +201,9 @@ def run_lfd(lfd_socket, period, lfd_id):
 def handle_gfd(lfd_socket, server_ip, lfd_id):
     global server_response
     global server_fail
+    global temp_source_ip
+    global temp_dest_ip
+    global flag
     try:
         while True:
             data = lfd_socket.recv(1024).decode(encoding='utf-8')
@@ -196,6 +213,14 @@ def handle_gfd(lfd_socket, server_ip, lfd_id):
             if constants.MAGIC_MSG_GFD_REQUEST in data:
                 response = "LFD" + str(lfd_id) + ": lfd-heartbeat"
                 lfd_socket.sendall(str.encode(response))
+
+            if constants.MAGIC_MSG_QUIET in data:
+                temp_msg = messages.deserialize(data)
+                temp_source_ip = temp_msg.source_ip
+                temp_dest_ip = temp_msg.dest_ip
+                flag = 1
+
+
             if server_response == 1:
                 logger.info("LFD sends add server request to GFD")
                 response = constants.MAGIC_MSG_SERVER_START + " at S" + str(lfd_id) + ": " + str(server_ip)

@@ -17,6 +17,10 @@ PORT = constants.DEFAULT_APP_SERVER_PORT
 # The all powerful global variable
 state_x = 0
 
+my_ip = 0
+
+am_i_quiet = False
+
 DebugLogger.set_console_level(30)
 logger = DebugLogger.get_logger('app_server')
 
@@ -37,7 +41,10 @@ def parse_args():
 
 def application_server_handler(client_socket, client_addr):
     global state_x
+    global my_ip
+    global am_i_quiet
     connected = True
+    
     try:
         while connected:
             data = client_socket.recv(constants.MAX_MSG_SIZE) # assume that we will send no message larger than this. Assume no timeout here.
@@ -55,14 +62,28 @@ def application_server_handler(client_socket, client_addr):
 
             #dispatch message handler
             if isinstance(msg, messages.ClientRequestMessage):
-                logger.critical('Received Message from client: %s', msg)
-                echo(client_socket, msg, extra_data=str(state_x))
-                state_x += 1
-                logger.info("state_x is " + str(state_x))
+                if not am_i_quiet:
+                    logger.critical('Received Message from client: %s', msg)
+                    echo(client_socket, msg, extra_data=str(state_x))
+                    state_x += 1
+                    logger.info("state_x is " + str(state_x))
 
             elif isinstance(msg, messages.LFDMessage) and msg.data == constants.MAGIC_MSG_LFD_REQUEST:
                 logger.info("Received from LFD: %s", msg.data)
                 respond_to_heartbeat(client_socket)
+
+            elif isinstance(msg, messages.QuietMessage):
+                am_i_quiet = True
+                if msg.dest_ip == my_ip:
+                    #listen for connect...create server
+
+
+                elif msg.source_ip == my_ip:
+                    # connect to server...client code
+                    while()
+                    
+
+                am_i_quiet = False
 
             else: 
                 logger.info("Received unexpected message; type: [%s]", type(msg))
@@ -99,7 +120,9 @@ def application_server(ip, port):
     logger.info("Echo Server Shutdown\n\n")
 
 if __name__ == "__main__":
+    global my_ip 
     ip, port = parse_args()
+    my_ip = ip
     DebugLogger.setup_file_handler('./app_server_' + ip+':'+str(port)+'.log', level=1)
 
     application_server(ip, port)
