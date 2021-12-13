@@ -146,7 +146,7 @@ class QuietMessage(Message):
     
 
     '''
-    def __init__(self, source_ip, dest_ip, flag=0, data=constants.MAGIC_MSG_QUIET):
+    def __init__(self, source_ip, dest_ip, flag=1, data=constants.MAGIC_MSG_QUIET):
         super().__init__(data=data)
         self.source_ip = source_ip
         self.dest_ip = dest_ip
