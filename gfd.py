@@ -6,6 +6,8 @@ from helper import is_valid_ipv4
 
 membership = []
 logger = DebugLogger.get_logger('gfd')
+# when this flag is set, gfd sends quiescence is done message
+quiet_flag = false
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Global Fault Detector")
@@ -71,9 +73,18 @@ def poke_lfd(conn, period):
 
 def serve_lfd(conn, addr, period):
     global membership
+    global quiet_flag
     try:
         lfd_status = True
         while True:
+            # if quiet_flag is true, we send quiet is done to all the LFD + servers
+            if (quiet_flag):
+                logger.info("Escaping quiescence...")
+                quiet_message = messages.QuietMessage(membership[0], membership[-1], 1)
+                quiet_bytes = quiet_message.serialize()
+                conn.sendall(quiet_bytes)
+                quiet_flag = false
+            
             #lfd_status = poke_lfd(conn, period)
             conn.sendall(bytes(constants.MAGIC_MSG_GFD_REQUEST, encoding='utf-8'))
             data = conn.recv(1024).decode(encoding='utf-8')
@@ -84,6 +95,8 @@ def serve_lfd(conn, addr, period):
             elif constants.MAGIC_MSG_SERVER_FAIL in data:        # if receive server fail message, cancel membership
                 cancel_membership(data)
                 success = True
+            elif constants.MAGIC_MSG_QUIESCENCE_DONE in data:
+                quiet_flag = True
             elif constants.MAGIC_MSG_SERVER_START in data:
                 register_membership(data)
                 success = True
