@@ -12,6 +12,13 @@ logger = DebugLogger.get_logger('lfd')
 server_response = 0
 server_fail = False
 
+server_ip = 0
+server_port = 0
+heartbeat_period = 0 
+gfd_ip = 0
+gfd_port = 0 
+lfd_id = 0
+
 def parse_args():
     parser = argparse.ArgumentParser(description="Local Fault Detector")
 
@@ -182,12 +189,13 @@ def handle_gfd(lfd_socket, server_ip, lfd_id):
                 response = constants.MAGIC_MSG_SERVER_FAIL + " at S" + str(lfd_id) + ": " + str(server_ip)
                 lfd_socket.sendall(str.encode(response))
                 server_fail = False
+                make_conn_to_server(constants.LOCAL_HOST, constants.DEFAULT_APP_SERVER_PORT, constants.DEFAULT_HEARTBEAT_PERIOD, constants.ECE_CLUSTER_ONE, constants.DEFAULT_GFD_PORT, 1)
                 
     except KeyboardInterrupt:
         logger.warning('Caught Keyboard Interrupt in local fault detector; exiting')
     
 def start_conn(ip, port, period, recipient, lfdID):
-    conn = False
+    conn = True
     try:
         lfd_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         lfd_socket.settimeout(period + 2)
@@ -200,20 +208,35 @@ def start_conn(ip, port, period, recipient, lfdID):
         elif recipient is "server":
             thread = threading.Thread(target=run_lfd, args=[lfd_socket, period, lfdID], daemon=1)
             thread.start()
+            conn = False
+
+        return conn    
                 
 
     except KeyboardInterrupt:
         logger.warning('Caught Keyboard Interrupt in local fault detector; exiting')
     except ConnectionRefusedError:
-        start_conn(ip, port, period, recipient)
+      return True
+      #  start_conn(ip, port, period, recipient)
 
-if __name__ == "__main__":
-    server_ip, server_port, heartbeat_period, gfd_ip, gfd_port, lfd_id = parse_args()
+
+def make_conn_to_server(server_ip, server_port, heartbeat_period, gfd_ip, gfd_port, lfd_id):
+
     try:
         start_conn(ip=gfd_ip, port=gfd_port, period=heartbeat_period, recipient="gfd", lfdID=lfd_id)
-        start_conn(ip=server_ip, port=server_port, period=heartbeat_period, recipient="server", lfdID=lfd_id)
+        temp = True
+        while(temp):
+            temp = start_conn(ip=server_ip, port=server_port, period=heartbeat_period, recipient="server", lfdID=lfd_id)
         while (True):
             pass
     except KeyboardInterrupt:
         logger.warning('Caught Keyboard Interrupt in local fault detector; exiting')
     #run_lfd(ip=server_ip, port=server_port, period=heartbeat_period) #block forever (until KB interrupt)
+
+if __name__ == "__main__":
+
+    #server_ip, server_port, heartbeat_period, gfd_ip, gfd_port, lfd_id = parse_args()
+    make_conn_to_server(constants.LOCAL_HOST, constants.DEFAULT_APP_SERVER_PORT, constants.DEFAULT_HEARTBEAT_PERIOD, constants.ECE_CLUSTER_ONE, constants.DEFAULT_GFD_PORT, 1)
+
+
+  
