@@ -24,6 +24,7 @@ def parse_args():
     return args.ip, args.port, args.heartbeat
 
 def print_membership():
+    global membership
     num = len(membership)
     members = ""
     for member in membership:
@@ -31,6 +32,7 @@ def print_membership():
     logger.info("GFD: " + str(num) + " member(s) - " + members)
     
 def register_membership(data):
+    global membership
     response = str(data)
     response_list = response.split()
     server_ip = response_list[len(response_list) - 1]
@@ -41,6 +43,7 @@ def register_membership(data):
     print_membership()
     
 def cancel_membership(data):
+    global membership
     response = str(data)
     response_list = response.split()
     server_ip = response_list[len(response_list) - 1]
