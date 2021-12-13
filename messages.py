@@ -137,10 +137,18 @@ class KillThreadMessage():
 
 class QuietMessage(Message):
     '''
+    GFD will send quiet message when we have a new server to join, and that server needs to catch up. 
+    That message will contain source IP of "primary" and dest IP of the "backup" to send the checkpoint to. 
+    That message will be sent with a flag 0.
+    
+    When checkpointing is done, server will send message back to the GFD that checkpointing is done.
+    GFD will then send back to all the servers to set am_i_quiet to true
+    
 
     '''
-    def __init__(self, source_ip, dest_ip, data=constants.MAGIC_MSG_QUIET):
+    def __init__(self, source_ip, dest_ip, flag=0, data=constants.MAGIC_MSG_QUIET):
         super().__init__(data=data)
         self.source_ip = source_ip
         self.dest_ip = dest_ip
+        self.flag = flag
  
