@@ -68,9 +68,16 @@ def application_server_handler(client_socket, client_addr):
             elif isinstance(msg, messages.LFDMessage):
                 logger.critical("Received from LFD: %s", msg.data)
                 
+            elif isinstance(msg, messages.PrimaryMessage):
+                logger.critical("Received from LFD: %s", msg.data)
+                relaunch_server = msg.primary
+                relaunch_server_id = list(relaunch_server.keys())[0]
+                relaunch_server_ip = relaunch_server[relaunch_server_id]
+                relaunch_server_port = constants.DEFAULT_APP_SERVER_PORT
+                #TO DO: connect relaunched_server and send checkpoint  
             
             else: 
-                logger.info("Received unexpected message; type: [%s]", type(msg))
+                logger.critical("Received unexpected message; type: [%s]", type(msg))
             
         
     finally: 

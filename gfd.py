@@ -59,10 +59,10 @@ def build_message(action):
     
     primary_msg = messages.PrimaryMessage(primary, backup, action)
     
-    logger.info(primary_msg.action)
+    #logger.info(primary_msg.action)
     
-    for backup_id in backup:
-        logger.info("gfd have backup: " + str(backup_id) + " " + backup[backup_id])
+    '''for backup_id in backup:
+        logger.info("gfd have backup: " + str(backup_id) + " " + backup[backup_id])'''
 
     return primary_msg
 
@@ -91,8 +91,8 @@ def register_membership(data, conn):
     
         server_type = "Primary" if IS_PRIMARY else "Backup"
         server = str(server_type) + " " + str(server_id) + " " + str(server_ip)
-        print(dead_list)
-        print(int(len(primary)))
+        #print(dead_list)
+        #print(int(len(primary)))
         if server_id in list(dead_list.keys()) and len(primary) > 0:
             
             checkpoint_sender = list(primary.keys())[0]    
@@ -256,11 +256,14 @@ def parse_membership(member):
     # member format: Primary S1 127.0.0.1
     member_list = member.split()  # split based on spaces
     server_type = member_list[0]
-    print(str(server_type))
+    # print(str(server_type))
     server_ip = member_list[len(member_list) - 1]
     server_id = member_list[len(member_list) - 2][1]
     logger.info("parse_membership: server_id " + server_id)
-    is_primary = True if "Primary" in server_type else False
+    if config == 0:
+        is_primary = None
+    else :    
+        is_primary = True if "Primary" in server_type else False
     return server_ip, server_id, is_primary
 
 
