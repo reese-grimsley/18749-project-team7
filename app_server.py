@@ -20,6 +20,7 @@ state_x = 0
 my_ip = 0
 
 am_i_quiet = False
+quiet_done = False
 
 DebugLogger.set_console_level(30)
 logger = DebugLogger.get_logger('app_server')
@@ -73,17 +74,20 @@ def application_server_handler(client_socket, client_addr):
                 respond_to_heartbeat(client_socket)
 
             elif isinstance(msg, messages.QuietMessage):
-                am_i_quiet = True
-                if msg.dest_ip == my_ip:
-                    #listen for connect...create server
+                if (msg.flag == 1):
+                    am_i_quiet = True
+                    if msg.dest_ip == my_ip:
+                        #listen for connect...create server
+                        # if quiescence is done, we set quiet_done as True
 
 
-                elif msg.source_ip == my_ip:
-                    # connect to server...client code
-                    while()
+                    elif msg.source_ip == my_ip:
+                        # connect to server...client code
+                        # if quiescence is done, we set quiet_done as True
+                        while()
                     
-
-                am_i_quiet = False
+                else:
+                    am_i_quiet = False
 
             else: 
                 logger.info("Received unexpected message; type: [%s]", type(msg))
@@ -106,6 +110,10 @@ def echo(client_socket, msg:messages.ClientRequestMessage, extra_data=''):
 
 
 def respond_to_heartbeat(client_socket, response_data=constants.MAGIC_MSG_LFD_RESPONSE):
+    global quiet_done
+    if quiet_done:
+        response_data = MAGIC_MSG_QUIESCENCE_DONE
+        quiet_done = False
     lfd_response_msg = messages.LFDMessage(data=response_data)
     response_bytes = lfd_response_msg.serialize()
     logger.critical('Received LFD Heartbeat')
