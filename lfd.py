@@ -63,6 +63,7 @@ def poke_server(client_socket, lfd_id):
             quiet_bytes = quiet_message.serialize()
             client_socket.sendall(quiet_bytes)
             flag = 0
+            logger.info('Sending the quiet message to server from LFD')
             
         else:   
             lfd_message = messages.LFDMessage()
@@ -92,57 +93,6 @@ def poke_server(client_socket, lfd_id):
           
     return success
 
-'''def run_lfd(ip=constants.LOCAL_HOST, port=constants.DEFAULT_APP_SERVER_PORT, period=constants.DEFAULT_HEARTBEAT_PERIOD):
-    logger.info('Running local fault detector... contacting port %d every %.2f seconds', port, period)
-    num_failures = 0
-    num_heartbeats = 0
-
-    try: 
-        client_socket = None
-        while True:
-
-            now = time.time()
-            next_hb = now + period
-
-            # server_good = True
-            # make the request; should finish (timeout) before the next heartbeat needs to occur
-            num_heartbeats += 1
-
-            try: 
-                if client_socket is None:
-                    client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                    client_socket.settimeout(period/2)
-                    client_socket.connect((ip, port))
-
-                server_good = poke_server(client_socket)
-            except Exception as e:
-                logger.debug('Exception caught; assume server is not good..')
-                logger.debug(e)
-                server_good = False
-
-            if server_good:
-                logger.info("Server responded correctly; waiting until next heartbeat")
-            else: 
-                num_failures += 1 #some light instrumentation
-                logger.warning("Server failed to respond; %d failures (of %d heartbeats)", num_failures, num_heartbeats)
-
-                #reset
-                client_socket.close()
-                client_socket = None
-                #TODO: notify global FD (if extant) of failure. 
-                #TODO: trigger main server to reset?
-
-            # wait for the next period
-            time_to_sleep = next_hb - time.time()
-            if time_to_sleep > 0:
-                time.sleep(time_to_sleep)
-
-    except KeyboardInterrupt:
-        logger.warning('Caught Keyboard Interrupt in local fault detector; exiting')
-    except Exception as e:
-        logger.error(e)
-        raise 
-'''
 
 def run_lfd(lfd_socket, period, lfd_id):
     num_failures = 0
@@ -169,22 +119,14 @@ def run_lfd(lfd_socket, period, lfd_id):
 
             if server_good:
                 logger.info("Server responded correctly; waiting until next heartbeat")
-                '''
-                if flag == 0:
-                    response = constants.MAGIC_MSG_SERVER_START + " at S" + str(lfd_id) + ": " + str(constants.LOCAL_HOST)
-                    lfd_socket.sendall(str.encode(response))
-                    logger.info("LFD sends respawn server request to GFD")
-                    flag = 1
-                '''    
+            
                     
 
             else:
                 num_failures += 1
                 server_fail = True            # notify gfd
                 logger.warning("Server failed to respond; %d failures", num_failures)
-                '''num_failures += 1 #some light instrumentation
-                logger.warning("Server failed to respond; %d failures (of %d heartbeats)", num_failures, num_heartbeats)
-                '''
+            
                 #reset
                 lfd_socket.close()
                 lfd_socket = None
@@ -211,15 +153,26 @@ def handle_gfd(lfd_socket, server_ip, lfd_id):
     global flag
     try:
         while True:
-            data = lfd_socket.recv(1024).decode(encoding='utf-8')
+            #data = lfd_socket.recv(1024).decode(encoding='utf-8')
+            data = lfd_socket.recv(constants.MAX_MSG_SIZE) 
+            msg = messages.deserialize(data)
             if not data:
                 continue
-            logger.info("Received from GFD: [%s]", str(data))
+            #logger.info("Received from GFD: [%s]", str(data))
+            '''           
             if constants.MAGIC_MSG_GFD_REQUEST in data:
                 response = "LFD" + str(lfd_id) + ": lfd-heartbeat"
                 lfd_socket.sendall(str.encode(response))
+            '''
 
-            if constants.MAGIC_MSG_QUIET in data:
+            if isinstance(msg, messages.Gfd_Request):
+                logger.info("Received from GFD: [%s]", msg.data)
+                response = "LFD" + str(lfd_id) + ": lfd-heartbeat"
+                lfd_socket.sendall(str.encode(response))
+
+
+           # if constants.MAGIC_MSG_QUIET in data:
+            elif isinstance(msg, messages.QuietMessage):
                 temp_msg = messages.deserialize(data)
                 temp_source_ip = temp_msg.source_ip
                 temp_dest_ip = temp_msg.dest_ip

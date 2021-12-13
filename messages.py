@@ -162,3 +162,12 @@ class CheckpointMessage(Message):
     def __init__(self, x):
         super().__init__()
         self.x = x
+
+
+
+class Gfd_Request(Message):
+    '''
+
+    '''
+    def __init__(self, data=constants.MAGIC_MSG_GFD_REQUEST):
+        super().__init__(data=data)

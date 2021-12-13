@@ -75,6 +75,7 @@ def application_server_handler(client_socket, client_addr):
                 respond_to_heartbeat(client_socket)
 
             elif isinstance(msg, messages.QuietMessage):
+                logger.info('Received the quiet message from LFD')
                 if (msg.flag == 1):
                     am_i_quiet = True
                     if msg.dest_ip == my_ip:

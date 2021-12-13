@@ -2,9 +2,13 @@
 import socket, argparse, time
 import DebugLogger, constants
 import threading
+import messages
 from helper import is_valid_ipv4
 
 membership = []
+membership_server_ip = []
+
+
 logger = DebugLogger.get_logger('gfd')
 # when this flag is set, gfd sends quiescence is done message
 quiet_flag = False
@@ -33,8 +37,9 @@ def print_membership():
         members += "[" + member + "] "       
     logger.info("GFD: " + str(num) + " member(s) - " + members)
     
-def register_membership(data):
+def register_membership(data, ip_addr):
     global membership
+    global membership_server_ip
     response = str(data)
     response_list = response.split()
     server_ip = response_list[len(response_list) - 1]
@@ -42,10 +47,13 @@ def register_membership(data):
     server = str(server_id) + str(server_ip)
     logger.info("Add " + server + " to membership")
     membership.append(server) 
+    membership_server_ip.append(str(ip_addr[0]))
+    print('added server_ip: '+ str(ip_addr[0]))
     print_membership()
     
-def cancel_membership(data):
+def cancel_membership(data, ip_addr):
     global membership
+    global membership_server_ip
     response = str(data)
     response_list = response.split()
     server_ip = response_list[len(response_list) - 1]
@@ -54,13 +62,22 @@ def cancel_membership(data):
     logger.info("Remove " + server + " out membership")
     if server in membership:
         membership.remove(server)
+
+    if str(ip_addr[0]) in membership_server_ip: 
+        membership_server_ip.remove(str(ip_addr[0]))
+        print('removed server_ip: '+ str(ip_addr[0]))
+
     print_membership()
     
 def poke_lfd(conn, period):
     success = False
     try: 
         data = conn.recv(1024).decode(encoding='utf-8')
-        conn.sendall(bytes(constants.MAGIC_MSG_GFD_REQUEST, encoding='utf-8'))
+        #conn.sendall(bytes(constants.MAGIC_MSG_GFD_REQUEST, encoding='utf-8'))
+        gfd_req_message = messages.Gfd_Request()
+        gfd_bytes = gfd_req_message.serialize()
+        conn.sendall(gfd_bytes)
+
         success = True
         
     except socket.timeout as st:
@@ -73,6 +90,7 @@ def poke_lfd(conn, period):
 
 def serve_lfd(conn, addr, period):
     global membership
+    global membership_server_ip
     global quiet_flag
     try:
         lfd_status = True
@@ -80,31 +98,36 @@ def serve_lfd(conn, addr, period):
             # if quiet_flag is true, we send quiet is done to all the LFD + servers
             if (quiet_flag):
                 logger.info("Escaping quiescence...")
-                quiet_message = messages.QuietMessage(membership[0], membership[-1], 2)
+                quiet_message = messages.QuietMessage(membership_server_ip[0], membership_server_ip[-1], 2)
                 quiet_bytes = quiet_message.serialize()
                 conn.sendall(quiet_bytes)
-                quiet_flag = false
+                quiet_flag = False
             
             #lfd_status = poke_lfd(conn, period)
-            conn.sendall(bytes(constants.MAGIC_MSG_GFD_REQUEST, encoding='utf-8'))
+            # conn.sendall(bytes(constants.MAGIC_MSG_GFD_REQUEST, encoding='utf-8'))
+
+            gfd_req_message = messages.Gfd_Request()
+            gfd_bytes = gfd_req_message.serialize()
+            conn.sendall(gfd_bytes)
+
             data = conn.recv(1024).decode(encoding='utf-8')
             logger.info('Received from LFD %s: [%s]', str(addr), str(data))
 
             if constants.MAGIC_MSG_RESPONSE_FROM_LFD in data:    # if receive lfd heartbeat
                 success = True
             elif constants.MAGIC_MSG_SERVER_FAIL in data:        # if receive server fail message, cancel membership
-                cancel_membership(data)
+                cancel_membership(data, addr)
                 success = True
             elif constants.MAGIC_MSG_QUIESCENCE_DONE in data:
                 quiet_flag = True
             elif constants.MAGIC_MSG_SERVER_START in data:
-                register_membership(data)
+                register_membership(data, addr)
                 success = True
 
                 if len(membership) >= 2:
                     #send a go to quiescence msg to all servers
                     logger.info("Entering quiescence...")
-                    quiet_message = messages.QuietMessage(membership[0], membership[-1])
+                    quiet_message = messages.QuietMessage(membership_server_ip[0], membership_server_ip[-1])
                     quiet_bytes = quiet_message.serialize()
                     conn.sendall(quiet_bytes)
 
