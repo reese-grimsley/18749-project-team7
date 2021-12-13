@@ -54,7 +54,7 @@ def poke_server(client_socket, lfd_id):
     success = False
     global server_response
     global temp_source_ip
-    global temp_dest_ip
+    global temp_dest_ipclient_socket
     global flag
     try: 
         # flag will be 1 when we start quiescence, flag will be 2 when we trying to end quiescence

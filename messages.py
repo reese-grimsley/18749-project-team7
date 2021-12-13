@@ -152,3 +152,13 @@ class QuietMessage(Message):
         self.dest_ip = dest_ip
         self.flag = flag
  
+
+
+class CheckpointMessage(Message):
+    '''
+    Checkpoint message for a new added replica
+    '''
+
+    def __init__(self, x):
+        super().__init__()
+        self.x = x

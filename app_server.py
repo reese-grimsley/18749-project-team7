@@ -79,13 +79,56 @@ def application_server_handler(client_socket, client_addr):
                     if msg.dest_ip == my_ip:
                         #listen for connect...create server
                         # if quiescence is done, we set quiet_done as True
+                        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as checkpoint_server_socket:
+                            try:
+                                checkpoint_server_socket.bind((my_ip, constants.DEFAULT_APP_SERVER_PORT_CHECKPOINT_PORT))
+                                checkpoint_server_socket.listen()
+
+                                #while True:
+                                conn, address = checkpoint_server_socket.accept()
+                                logger.info('Connected by %s for the purpose of receiving checkpoints', str(address))
+
+                                #receive checkpoint message
+                                checkpoint_msg_bytes = checkpoint_server_socket.recv(constants.MAX_MSG_SIZE)
+                                checkpoint_msg = messages.deserialize(checkpoint_msg_bytes)
+
+                                state_x = checkpoint_msg.x
+                                logger.critical('newly added active server replica received a checkpoint msg...updated state variable x is: ' + str(state_x))
+
+                                conn.close()
+                                    #break #break from while
+
+                            except KeyboardInterrupt:
+                                logger.critical('Keyboard interrupt in checkpoint_server_socket; exiting')
+                            except Exception as e:
+                                logger.error(e)
 
 
                     elif msg.source_ip == my_ip:
                         # connect to server...client code
+                        temp_flag = True
+                        checkpoint_client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                        while temp_flag:
+                            try:
+                                checkpoint_client_socket.connect((msg.dest_ip, DEFAULT_APP_SERVER_PORT_CHECKPOINT_PORT))
+                                logger.info('Connected to %s for the purpose of sending checkpoints', msg.dest_ip)
+                                
+                                checkpoint_msg = messages.CheckpointMessage(state_x)
+                                checkpoint_msg_bytes = checkpoint_msg.serialize()
+                                checkpoint_client_socket.sendall(checkpoint_msg_bytes)
+                                logger.critical('sent a checkpoint msg to active replica')
+
+                                temp_flag = False
+                                checkpoint_client_socket.close()
+
+                            except ConnectionRefusedError:
+                                temp_flag = True
+
+
                         # if quiescence is done, we set quiet_done as True
-                        while()
+                        quiet_done = True
                     
+
                 else:
                     am_i_quiet = False
 
@@ -128,8 +171,8 @@ def application_server(ip, port):
     logger.info("Echo Server Shutdown\n\n")
 
 if __name__ == "__main__":
-    global my_ip 
     ip, port = parse_args()
+    global my_ip 
     my_ip = ip
     DebugLogger.setup_file_handler('./app_server_' + ip+':'+str(port)+'.log', level=1)
 
