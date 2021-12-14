@@ -1,22 +1,23 @@
 #!/usr/bin/env python3
 
-# used https://realpython.com/python-sockets/
 
 from os import kill
+from pickle import TRUE
 import socket
 import argparse
 import time, threading, queue
 import copy, traceback
+import logging
 
 import DebugLogger, constants
 from helper import is_valid_ipv4, parse_addresses_file, addr_to_ip_port
 import messages
 
 
-DebugLogger.set_console_level(30)
+DebugLogger.set_console_level(constants.LOGGING_LEVEL)
 logger = DebugLogger.get_logger('client')
 
-
+kill_switch_engaged = False
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Application Server")
@@ -25,6 +26,7 @@ def parse_args():
     parser.add_argument('-i', '--ip', metavar='i', default=constants.CATCH_ALL_IP, help='The IPv4 address of the application server', type=str)
     parser.add_argument('-a', '--addresses_path', metavar='a', default='./server_addresses.txt', help='A path to a file containing a list of IP addresses in IPv4 format with ports')
     parser.add_argument('-c', '--client_id', metavar='c', default=1, help="A client identifier (an integer, for simplicity)", type=int) #could also just be a string
+    parser.add_argument('-gi', '--gfd_ip', metavar='gi', default=constants.ECE_CLUSTER_FOUR, help="The address of GFD", type=str)
     args = parser.parse_args()
 
     if args.port < 1024 or args.port > 65535:
@@ -38,49 +40,70 @@ def parse_args():
         address_info = None
         
 
-    return args.ip, args.port, args.client_id, address_info
+    return args.ip, args.port, args.client_id, address_info, args.gfd_ip
 
-class ClientConnectedMessage():
+class ClientServerConnectionMessage():
     '''
-    Inform the duplication handler about the status of a connected server. Message is meant to be passed through a queue
+    Inform the duplication handler about the status of a connected server. Message is meant to be passed through a queue, and NOT through a network (hence the lack of serialize/deserialize)
+    :param server_id: interger describing which server replica we are referring to
+    :param is_connected: boolean for whether the replica can be connected to or not
+    :param is_primary: boolean describing is the replica of interest is the primary. Must be None for active-replication systems. NOT SAFE TO CHECK only for falseness; should check falseness AND None-ness (``if not is_primary and is_primary is not None``)
     '''
-    def __init__(self, server_id, is_connected):
+    def __init__(self, server_id, connection_action, is_primary=None, client_input_queue = None):
         self.server_id = server_id
-        self.is_connected = is_connected
+        self.connection_action = connection_action
+        self.is_primary = is_primary
+        self.client_input_queue = client_input_queue
 
     def __repr__(self):
-        return '{ClientConnectedMessage: S%d connected:%s}' % (self.server_id, self.is_connected)
+        return '{ClientConnectedMessage: S%d action:%s}' % (self.server_id, self.connection_action)
+    def __eq__(self, other):
+        return isinstance(other, ClientServerConnectionMessage) and id(other) == id(self)
+    def __lt__(self, other):
+        if not isinstance(other, ClientServerConnectionMessage): return False
+
+class ClientReplicaInfo():
+    def __init__(self, thread_handle, thread_queue, replica_id, replica_ip, replica_port, is_primary):
+
+        self.thread_handle = thread_handle
+        self.thread_queue = thread_queue
+        self.replica_id = replica_id
+        self.replica_ip = replica_ip
+        self.replica_port = replica_port
+        self.is_primary = is_primary
+    
+    def __repr__(self):
+        return "{ClientReplicaInfo: ID [%d]; replica at %s:%d; primary_status: %s" % (self.replica_id, self.replica_ip, self.replica_port, self.is_primary)
 
 class Client:
-    def __init__(self, address_info=[], client_id=1):
+    def __init__(self, address_info=[], client_id=1, gfd_ip=""):
         self.server_addresses = address_info
         self.client_id = client_id
+        self.gfd_ip = gfd_ip
 
-        self.server_communicating_threads = [] #will store tuples of form (thread, input-queue, server address)
-        self.voter_thread = None # will be tuple of form (thread, input-queue)
+        self.duplication_handler = None # will be tuple of form (thread, input-queue)
+        self.gfd_thread = None
 
         self.logger = DebugLogger.get_logger('client.c-'+str(self.client_id))
 
     def start_client(self):
         self.logger.info("Starting client")
-        duplication_handler_queue = queue.Queue()
-        for server_addr in self.server_addresses:
-            self.logger.info('starting client-server thread for server: %s', server_addr)
-            ip, port = addr_to_ip_port(server_addr[1])
-            server_id = server_addr[0]
-            message_queue = queue.Queue()
-
-            t = threading.Thread(target=self.run_client_server_handler, args=[ip,port,server_id, message_queue, duplication_handler_queue], daemon=False)
-            self.server_communicating_threads.append((t, message_queue, server_addr))
-            t.start()
+        duplication_handler_queue = queue.PriorityQueue()
+        request_distributor_queue = queue.PriorityQueue()
         
-        self.logger.info("Started client-server threads; \t starting voter/duplication handler-thread")
+        self.logger.info("Starting threads from main")
+
+        self.gfd_thread = (threading.Thread(target=self.gfd_communicator, args=[self.client_id, self.gfd_ip, request_distributor_queue, duplication_handler_queue], daemon=False) )
+        self.gfd_thread.start() #no input queue to GFD thread. It'll be busy listening to socket
+
+        self.request_distributor_thread = (threading.Thread(target=self.run_request_distributor, args=[request_distributor_queue, duplication_handler_queue], daemon=False), request_distributor_queue)
+        self.request_distributor_thread[0].start()
         
-        self.voter_thread = (threading.Thread(target=self.run_duplication_handler, args=[duplication_handler_queue]), duplication_handler_queue)
-        self.voter_thread[0].start()
+        self.duplication_handler = (threading.Thread(target=self.run_duplication_handler, args=[duplication_handler_queue], daemon=False), duplication_handler_queue)
+        self.duplication_handler[0].start()
 
 
-        # main run loop; this is client facing
+        # main run loop; this is user facing
         try: 
             request_number = 1
             while True:
@@ -91,123 +114,207 @@ class Client:
                 # Have some data to send now; let's create ClientRequestMessages and send to all the threads through queues
                 self.logger.info('Sending message #%d [%s] to the servers', request_number, data)
 
-                for server_thread in self.server_communicating_threads:
-                    server_addr = server_thread[2]
-                    server_id = server_addr[0]
-
-
-                    client_message = messages.ClientRequestMessage(self.client_id, request_number, copy.copy(data), server_id)
-
-                    self.logger.debug('Setup msg for server [%d]: %s', server_id, client_message)
-
-                    server_thread[1].put(client_message)
-
-                # Let the voter/duplication handler thread know that a new request has been generated, and that it should expect to receive messages with a particular request number
-                client_voter_message = messages.ClientRequestMessage(self.client_id, request_number, copy.copy(data), constants.NULL_SERVER_ID)
-                self.voter_thread[1].put(client_voter_message) 
+                client_request_message = messages.ClientRequestMessage(self.client_id, request_number, copy.copy(data), constants.NULL_SERVER_ID)
+                self.request_distributor_thread[1].put((constants.MSG_PRIORITY_DATA, client_request_message))
 
                 request_number += 1
                 time.sleep(.25) #just a quick delay
 
 
         except KeyboardInterrupt:
-            self.logger.warning("Received KB interrupt in main client thread. Program should now end to kill server-connect and voter threads. ")
+            self.logger.warning("Received KB interrupt in main client thread. Program should now kill server-connect and voter threads. ")
         except Exception:
             self.logger.error(traceback.format_exc())
         finally: 
             # kill the other threads here, then exit. 
             self.logger.info("Attempting to shut down child threads of this client")
-            for t in self.server_communicating_threads:
-                killMsg = messages.KillThreadMessage()
-                t[1].put(killMsg)
-            self.voter_thread[1].put(messages.KillThreadMessage())
+            
+            self.duplication_handler[1].put((constants.MSG_PRIORITY_MGMT, messages.KillThreadMessage()))
+            self.request_distributor_thread[1].put((constants.MSG_PRIORITY_MGMT, messages.KillThreadMessage()))
+            global kill_switch_engaged
+            kill_switch_engaged = True
 
     
-    def run_client_server_handler(self, ip, port, server_id, outgoing_message_queue, duplication_handler_queue):
+    def run_request_distributor(self, input_queue, duplication_handler_queue):
         '''
-        Handles a client-server connection. It will setup a socket for the given ip and port, and assume it's server ID matches the argument 
-
-        All communication between this thread and others will be through queues; Each thread should dispatch based on a single input queue, and send results on the output queue 'duplication_handler_queue'
-
-        Messages to be sent to the server should be of form ClientRequestMessage, and the server_id within matches the input argument to this function. 
-        This thread will be killed when it sees the server shutdown the socket, a timeout on a message exchange with server finishes, or a KillThreadMessage arrives to the input queue
-
-        Responses from the server will be of form ClientResponseMessage, and be send into the output queue that the voter thread listens to (duplication_handler_queue)
-
-        This thread will exit when it receives a kill signal/message through its queue, when a server response times out, or when the socket is closed from the server side
+        Take in requests directly from the main user-input thread and send them to all threads managing a connection to a replica and the duplication handler. Keeps track of which server replicas are active and which is the primary
         '''
-        assert isinstance(outgoing_message_queue, queue.Queue) and isinstance(duplication_handler_queue, queue.Queue), "queue objects should be from queue.Queue"
-        try:
-            self.logger.info("Client-server handler for ip %s, port %d, S_id %d", ip, port, server_id)
 
+        assert isinstance(input_queue, queue.PriorityQueue) and isinstance(duplication_handler_queue, queue.PriorityQueue), "queue objects should be from queue.PriorityQueue"
 
+        self.logger.info("Started request-distributor thread")
+
+        connection_handler_info = [] #entries will be tuples of form (server_id, queue)
+        primary_server_id = constants.NULL_SERVER_ID 
+
+        try: 
             kill_signal_received = False
             while not kill_signal_received:
-                is_connected = False
-                print('check kill?')
-                with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client_socket:
+                msg = None
+                try:
+                    msg = input_queue.get(block=True, timeout=constants.QUEUE_TIMEOUT)[1] #entries are tuples of form (priority, msg)
+                    self.logger.debug('Request distributor received msg: [%s]', msg)
 
-                    try: 
-                        # client_socket.settimeout(constants.CLIENT_SERVER_TIMEOUT)
-                        client_socket.connect((ip, port))
-                        client_socket.settimeout(constants.CLIENT_SERVER_TIMEOUT)
+                except queue.Empty:
+                    pass #nothing to do. 
 
-                        is_connected = True
-                        self.logger.info('Connected!')
+                if msg is None: 
+                    pass #probably just empty queue and timed out
 
-                        connected_message = ClientConnectedMessage(server_id, True)
-                        duplication_handler_queue.put(connected_message)
-                    except Exception:
-                        self.logger.warning('Failed to connect to S%d', server_id)
-                        # print(traceback.format_exc())
-                        is_connected = False
+                elif isinstance(msg, messages.KillThreadMessage):
+                    kill_signal_received = True
 
-                    while is_connected and not kill_signal_received:
-                        # read from input queue with small timeout
-                        new_request = None
-                        try:
-                            new_request = outgoing_message_queue.get(block=True, timeout=constants.QUEUE_TIMEOUT)
-                        except queue.Empty:
-                            pass #nothing to do. 
+                elif isinstance(msg, ClientServerConnectionMessage):
+                    self.logger.info("req_distributor::: Received Client Connection mgmt Message; %s", msg)
+                    connection_msg = msg
+                    if connection_msg.is_primary:
+                        self.logger.debug("Detected changed primary in ClientServerConnectionMessage; go from (%d) to (%d)" % (primary_server_id, msg.server_id))
+                        primary_server_id = msg.server_id
+                    self.logger.info(connection_handler_info)
 
-                        if new_request is None: 
-                            pass #probably just empty queue and timed out
+                    if connection_msg.connection_action == constants.GFD_ACTION_NEW:
+                        if connection_msg.server_id >= 0 and isinstance(connection_msg.client_input_queue, queue.PriorityQueue): 
+                            connection_handler_info.append((connection_msg.server_id, connection_msg.client_input_queue))
+                    if connection_msg.connection_action == constants.GFD_ACTION_UPDATE:
+                        pass
+                        self.logger.info("Request distributor received ACTION_UPDATE. Assume the replica ID is for the switched primary.")
+                        if connection_msg.is_primary:
+                            primary_server_id = connection_msg.server_id
+                            #send a message to the thread handling this replica, and tell it that it is the new primary
+                            for chi in connection_handler_info:
+                                server_id = chi[0]
+                                if server_id == connection_msg.server_id:
+                                    client_handler_queue = chi[1]
+                                    client_handler_queue.put((constants.MSG_PRIORITY_CONTROL, connection_msg))        
+                                    break
 
-                        elif isinstance(new_request, messages.KillThreadMessage):
-                            self.logger.info('Received thread kill signal -- exiting thread for server [%d]', server_id)
-                            kill_signal_received = True
 
-                        elif isinstance(new_request, messages.ClientRequestMessage):
-                            #do all the normal stuff. Should maybe be a function call
-                            try: 
-                                response = self.do_request_response(new_request, client_socket)
-                                if response is None:
-                                    is_connected = False # assuming if we get no response, that the connection is dead
-                                    # if the response didn't come and we kill the connection, we should still send something to the duplication handler so 
-                                else:
-                                    duplication_handler_queue.put(response)
+                        #TODO: update the connections, if needed
+                    elif connection_msg.connection_action == constants.GFD_ACTION_DEAD:
+                        chi_to_remove = None
+                        for chi in connection_handler_info:
+                            server_id = chi[0]
+                            if server_id == connection_msg.server_id:
+                                chi_to_remove = chi
+                                if primary_server_id == connection_msg.server_id:
+                                    primary_server_id = constants.NULL_SERVER_ID
+                                    self.logger.warning("Primary killed without replacement!")
+                        if chi_to_remove is not None:
+                            connection_handler_info.remove(chi_to_remove)
 
-                            except TimeoutError as to:
-                                self.logger.info('client timed out. Kill connection and try again')
-                                is_connected = False
+                elif isinstance(msg, messages.ClientRequestMessage):
+                    self.logger.info("Received Client Request Message; %s", msg)
 
-                        else:
-                            self.logger.warning('Unable to determine what to do with incoming message [%s] in run_client_server_handler for id %d', new_request, server_id)
+                    for handler_info in connection_handler_info:
+                        server_id = handler_info[0]
+                        handler_queue = handler_info[1]
+                        self.logger.info("duplicating request for replica %d", server_id)
 
-                    self.logger.info("Closing socket to server [%d]", server_id)
-                    client_socket.close()
-                    connected_message = ClientConnectedMessage(server_id, False)
-                    duplication_handler_queue.put(connected_message)
-                    time.sleep(1) #give some time before trying to reconnect
+                        request_msg_copy = copy.deepcopy(msg)
+                        request_msg_copy.server_id = server_id
+                        handler_queue.put((constants.MSG_PRIORITY_DATA, request_msg_copy))
 
-        except KeyboardInterrupt:
-            self.logger.critical('Keyboard interrupt in client; exiting')
-        self.logger.info('thread for connection to server %d exiting', server_id)
+                    initiate_duplicator_msg = copy.deepcopy(msg)
+                    initiate_duplicator_msg.server_id = constants.NULL_SERVER_ID #ID doesn't matter here
+                    duplication_handler_queue.put((constants.MSG_PRIORITY_DATA, initiate_duplicator_msg))
+        except Exception as e:
+            traceback.print_last()
+            self.logger.error(e)
+
+        self.logger.info("Exiting thread for request distribution")
+
+
+
+    def run_client_server_handler(self, ip, port, server_id, input_queue, duplication_handler_queue, is_primary=None):
+        '''
+        Handles a client-server connection. It will setup a socket for the given ip and port, and assume it's server ID matches the argument 
+        All communication between this thread and others will be through queues; Each thread should dispatch based on a single input queue, and send results on the output queue 'duplication_handler_queue'
+        Messages to be sent to the server should be of form ClientRequestMessage, and the server_id within matches the input argument to this function. 
+        This thread will be killed when it sees the server shutdown the socket, a timeout on a message exchange with server finishes, or a KillThreadMessage arrives to the input queue
+        Responses from the server will be of form ClientResponseMessage, and be send into the output queue that the voter thread listens to (duplication_handler_queue)
+        This thread will exit when it receives a kill signal/message through its queue, when a server response times out, or when the socket is closed from the server side
+        '''
+        assert isinstance(input_queue, queue.PriorityQueue) and isinstance(duplication_handler_queue, queue.PriorityQueue), "queue objects should be from queue.PriorityQueue"
+
+        def reconnect(sock:socket.socket, ip, port, is_primary=None):
+            connected = False
+            if is_primary != False:
+                try:
+                    self.logger.debug('Connect to replica at %s:%d' % (ip, port))
+                    sock.connect((ip, port))
+                    connected = True
+                    self.logger.debug('Cconnected to replica!')
+                except OSError as e:
+                    self.logger.warning("failed to reconnect")
+                    self.logger.error(traceback.format_exc())
+
+            return connected
+
+        self.logger.info("Client-server handler for ip %s, port %d, S_id %d", ip, port, server_id)
+
+        kill_signal_received = False
+        is_connected = False
+        client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        is_connected = reconnect(client_socket, ip, port, is_primary=is_primary)
+        while not kill_signal_received:
+
+            # while is_connected and not kill_signal_received:
+            # read from input queue with small timeout
+            new_request = None
+            try:
+                new_request = input_queue.get(block=True, timeout=constants.QUEUE_TIMEOUT)[1] #entries are tuples of form (priority, msg)
+            except queue.Empty:
+                pass #nothing to do. 
+
+            if new_request is not None: 
+                pass #probably just empty queue and timed out
+                self.logger.info("new messages received by handler for replica %d: %s" % (server_id, new_request))
+
+            if isinstance(new_request, messages.KillThreadMessage):
+                self.logger.info('Received thread kill signal -- exiting thread for server [%d]', server_id)
+                kill_signal_received = True
+
+            elif isinstance(new_request, messages.ClientRequestMessage):
+                try: 
+                    if is_primary or is_primary is None:
+                        if is_connected or reconnect(client_socket, ip, port, is_primary=is_primary):
+                            is_connected = True
+
+                            self.logger.info("Sending request to server id %d" % server_id)
+                            response = self.do_request_response(new_request, client_socket)
+                            if response is None:
+                                is_connected = False # assuming if we get no response, that the connection is dead
+                                # if the response didn't come and we kill the connection, we should still send something to the duplication handler so 
+                            else:
+                                duplication_handler_queue.put((constants.MSG_PRIORITY_DATA, response))
+
+                except TimeoutError as to:
+                    self.logger.info('client timed out. Kill connection and try again')
+                    is_connected = False
+
+            elif isinstance(new_request, ClientServerConnectionMessage):
+                self.logger.info(" replica-handler received ClientConnectionMessage: %s" % new_request)
+                pass    
+                if new_request.server_id == server_id and new_request.connection_action != constants.GFD_ACTION_DEAD:
+                    time.sleep(3) # There's a race condition here. Give the server a moment to hear back from the RM that it is the new primary, or we'll be refused
+                    is_primary = new_request.is_primary
+                    client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                    is_connected = reconnect(client_socket, ip, port, is_primary=is_primary)
+
+            elif new_request is not None:
+                self.logger.warning('Unable to determine what to do with incoming message [%s] in run_client_server_handler for id %d', new_request, server_id)
+
+
+            if is_primary != False and not is_connected:
+                self.logger.info("Try connecting to replica %d" % server_id)
+                client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                is_connected = reconnect(client_socket, ip, port, is_primary=is_primary)
+
+        self.logger.info('Exiting thread for connection to server %d', server_id)
 
     def do_request_response(self, request_message:messages.ClientRequestMessage, sock):
         '''
         Send the request message through the socket and return a ClientResponseMessage
-
         Returns None is nothing is received, including due to a timeout
         '''
         response_message = None
@@ -217,7 +324,7 @@ class Client:
             self.logger.critical('Send message to server: %s', request_message)
             sock.sendall(req_data)
 
-            #TODO: expect ACK? Assume no ACKs for ACKs
+            #TODO: expect ACK? Assume no ACKs for now
 
             response_data = sock.recv(constants.MAX_MSG_SIZE) #TODO: handle scnearios where we send more than 1024 bytes
 
@@ -228,30 +335,216 @@ class Client:
             else: 
                 response_message = messages.deserialize(response_data)
                 self.logger.critical('Receive message from server: %s', response_message)
-                #TODO: send ACK? Assume no ACKs for ACKs
+                #TODO: send ACK? Assume no ACKs for now
 
         except socket.timeout as to:
             self.logger.error('Socket timeout: %s', to)
-            raise to
-            # response_message = None
+            # raise to
+            response_message = None
 
         except Exception as e:
-            self.logger.error(e) 
-            raise e
-            # response_message = None
+            self.logger.error(traceback.format_exc()) 
+            # raise e
+            response_message = None
 
         return response_message
 
-    def run_duplication_handler(self, response_queue:queue.Queue):
+    def gfd_communicator(self, client_id, gfd_ip, request_distributor_queue, duplication_handler_queue):
+        global kill_switch_engaged
+        port = constants.DEFAULT_GFD_PORT
+
+        client_server_handlers = [] #elements are tuples like: (client_thread, client_input_queue, server_id, replica_ip, replica_port, is_primary)
+        primary_server_id = constants.NULL_SERVER_ID
+
+        while not kill_switch_engaged:
+            is_connected = False
+            self.logger.info('GFD:: start')
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client_socket:
+                try:
+                    # client_socket.settimeout(constants.CLIENT_SERVER_TIMEOUT)
+                    client_socket.connect((gfd_ip, port))
+                    client_socket.settimeout(constants.CLIENT_SERVER_TIMEOUT) #timeout should be used to 
+
+                    is_connected = True
+                    self.logger.info('GFD:: Connected at IP:Port  %s:%d', gfd_ip, port)
+                except Exception:
+                    self.logger.warning('GFD:: Failed to connect to GFD %s', gfd_ip)
+                    # print(traceback.format_exc())
+                    is_connected = False
+                    time.sleep(2)
+                while is_connected and not kill_switch_engaged:
+                    try:
+                        #data = client_socket.recv(1024).decode(encoding='utf-8')
+                        gfd_msg_bytes = client_socket.recv(constants.MAX_MSG_SIZE)
+                        gfd_msg = messages.deserialize(gfd_msg_bytes)
+                        
+                        if not gfd_msg:
+                            self.logger.info("Connection to GFD appears to have died")
+                            is_connected = False
+                            #continue
+                            
+                        if gfd_msg is None:
+                            continue
+                            
+                        logger.info('Received from GFD: [%s]', gfd_msg.data)
+                        data = gfd_msg.data
+                        
+                        if constants.MAGIC_MSG_GFD_REQUEST in gfd_msg.data:
+                            self.logger.info("Received LFD message from GFD; inform it we are actually a client")
+                            response = constants.MAGIC_MSG_RESPONSE_FROM_CLIENT + str(client_id)
+                            client_msg = messages.LFDMessage(response)
+                            client_msg_bytes = client_msg.serialize()
+                            client_socket.sendall(client_msg_bytes)
+                            self.logger.info(response)
+                            
+                        elif constants.GFD_ACTION_DEAD == gfd_msg.action:
+                            self.logger.info("GFD signalled ACTION_DEAD")
+                            self.logger.info(data)
+                            ##send kill signal to thread and ClientConnectedMessage update to request distributor (handler itself should send to duplication handler)
+                           
+                            server_id = int(gfd_msg.sid) 
+                            
+                            # Tell everyone that that the replica is no longer active; no longer send requests nor expect responses
+                            client_disconnected_msg = ClientServerConnectionMessage(server_id, connection_action=constants.GFD_ACTION_DEAD)
+                            request_distributor_queue.put((constants.MSG_PRIORITY_CONTROL, copy.copy(client_disconnected_msg))) #copy to avoid any changes that thread could make
+                            duplication_handler_queue.put((constants.MSG_PRIORITY_CONTROL, copy.copy(client_disconnected_msg)))
+                            #kil handler thread
+                            c_to_remove = None
+                            for c in client_server_handlers: #elements of form (client_thread, client_input_queue, server_id)
+                                if c.replica_id == server_id:
+                                    c.thread_queue.put((constants.MSG_PRIORITY_MGMT, messages.KillThreadMessage()))
+                                    c_to_remove = c
+                                    if primary_server_id == server_id:
+                                        self.logger.error("Primary killed without replacement; setting primary id to null (-1)")
+                                        primary_server_id = constants.NULL_SERVER_ID
+                            if c_to_remove is not None:
+                                self.logger.info("Removing handler thread for replica %d: %s", server_id, c_to_remove)
+                                client_server_handlers.remove(c_to_remove)
+                            else: self.logger.warning("Didn't find replica [%d] to remove??", server_id)
+
+                        elif constants.GFD_ACTION_NEW == gfd_msg.action: 
+                            self.logger.info("GFD signalled ACTION_NEW")
+                            self.logger.info(gfd_msg.data)
+ 
+                            replica_ip = gfd_msg.server_ip
+                            replica_port = constants.DEFAULT_APP_SERVER_PORT
+                            server_id = int(gfd_msg.sid)
+                            is_primary = gfd_msg.is_primary
+
+                            if is_primary and server_id != primary_server_id:
+                                primary_server_id = server_id
+
+                            # If this replica is already known by the client and has a different port and IP, we need to remove the old one and add the new one back
+                            for csh in client_server_handlers:
+                                # if csh[2] == server_id:
+                                if csh.replica_id == server_id:
+                                    if (csh.replica_ip != replica_ip or csh.replica_port != replica_port):
+                                        self.logger.warning("Received message to add new server [%d] for one we're already connected to!", server_id)
+                                        client_disconnected_msg = ClientServerConnectionMessage(server_id, connection_action=constants.GFD_ACTION_DEAD)
+                                        request_distributor_queue.put((constants.MSG_PRIORITY_CONTROL, copy.copy(client_disconnected_msg))) #copy to avoid any changes that thread could make
+                                        duplication_handler_queue.put((constants.MSG_PRIORITY_CONTROL, copy.copy(client_disconnected_msg)))
+
+                                        csh.thread_queue.put((constants.MSG_PRIORITY_MGMT ,messages.KillThreadMessage()))
+                                        client_server_handlers.remove(csh) #this may be unsafe within an iterator
+                                        break
+                                    else:
+                                        self.logger.warning("Client<-GFD: Received message to update status for server handler : %s" % csh)
+
+                            # create a new thread to handle this new replica
+                            client_input_queue = queue.PriorityQueue()
+                            client_thread = threading.Thread(target=self.run_client_server_handler, args=[replica_ip, replica_port, server_id, client_input_queue, duplication_handler_queue, is_primary], daemon=True)
+                            client_thread.start()
+                            client_replica_info = ClientReplicaInfo(client_thread, client_input_queue, server_id, replica_ip, replica_port, is_primary)
+                            # client_server_handlers.append((client_thread, client_input_queue, server_id, replica_ip, replica_port, is_primary))
+                            client_server_handlers.append(client_replica_info)
+
+                            #inform other threads that a new replica is present
+                            client_connected_msg = ClientServerConnectionMessage(server_id, connection_action=constants.GFD_ACTION_NEW, is_primary=is_primary, client_input_queue=client_input_queue)
+                            request_distributor_queue.put((constants.MSG_PRIORITY_CONTROL, copy.copy(client_connected_msg))) #copy to avoid any changes that thread could make
+                            duplication_handler_queue.put((constants.MSG_PRIORITY_CONTROL, copy.copy(client_connected_msg)))
+
+                        elif gfd_msg.action == constants.GFD_ACTION_UPDATE:
+                            replica_ip = gfd_msg.server_ip
+                            replica_port = constants.DEFAULT_APP_SERVER_PORT
+                            server_id = int(gfd_msg.sid)
+                            is_primary = gfd_msg.is_primary
+
+                            #we need to update the replica we know as 'primary'
+                            if is_primary and server_id != primary_server_id:
+                                old_primary_id = primary_server_id
+                                primary_server_id = server_id
+                                self.logger.info("Updating the primary server replica from %d to %d" % (old_primary_id, primary_server_id))
+
+                                # Get the client/server info for the old replicas
+                                csh_new_primary = None
+                                csh_old_primary = None
+                                for csh in client_server_handlers:
+                                    if not isinstance(csh, ClientReplicaInfo): continue
+
+                                    if csh.replica_id == server_id:
+                                        if (csh.replica_ip == replica_ip and csh.replica_port == replica_port):
+                                            csh_new_primary = csh
+                                        else:
+                                            self.logger.error("Error; client server handler is being updated for a replica we don't know about!! PANIK")
+                                            raise ValueError("attempted to updated replica S%d at (%s:%d) to primary for a different address (%s:%d)", (csh.replica_id, csh.replica_ip, csh.replica_port, replica_ip, replica_port))
+                                            #we could delete the old backup and add the new one we're updaitng 
+                                    elif csh.replica_id == old_primary_id:
+                                        csh_old_primary = csh
+
+                                # We were told to update the primary to a replica we don't know of. We need to add this.
+                                if csh_new_primary is None:
+                                    client_input_queue = queue.PriorityQueue()
+                                    client_thread = threading.Thread(target=self.run_client_server_handler, args=[replica_ip, replica_port, server_id, client_input_queue, duplication_handler_queue, is_primary], daemon=True)
+                                    client_thread.start()
+                                    csh_new_primary = ClientReplicaInfo(client_thread, client_input_queue, server_id, replica_ip, replica_port, is_primary)
+                                    client_server_handlers.append(csh_new_primary)
+
+                                    # inform the request distributor and the duplication handler
+                                    client_connected_msg = ClientServerConnectionMessage(server_id, connection_action=constants.GFD_ACTION_NEW, is_primary=is_primary, client_input_queue=client_input_queue)
+                                    request_distributor_queue.put((constants.MSG_PRIORITY_CONTROL, copy.copy(client_connected_msg))) #copy to avoid any changes that thread could make
+                                    duplication_handler_queue.put((constants.MSG_PRIORITY_CONTROL, copy.copy(client_connected_msg)))
+
+                                csh_new_primary.is_primary = True
+                                # csh_new_primary[5] = True #cannot assign to element in tuple. Immutable..
+
+                                #send update messages to each thread tracking the replicas
+                                #update messages for the new primary
+                                client_connected_msg_primary = ClientServerConnectionMessage(csh_new_primary.replica_id, constants.GFD_ACTION_UPDATE, is_primary=csh_new_primary.is_primary, client_input_queue=csh_new_primary.thread_queue)
+                                request_distributor_queue.put((constants.MSG_PRIORITY_CONTROL, copy.copy(client_connected_msg_primary))) #copy to avoid any changes that thread could make
+                                duplication_handler_queue.put((constants.MSG_PRIORITY_CONTROL, copy.copy(client_connected_msg_primary)))
+
+                                if csh_old_primary is not None:
+                                    # update messages for old primary (now a backup)
+                                    csh_old_primary.is_primary = False
+                                    client_connected_msg_backup = ClientServerConnectionMessage(csh_old_primary.replica_id, constants.GFD_ACTION_UPDATE, is_primary=csh_old_primary.is_primary, client_input_queue=csh_old_primary.thread_queue)
+                                    request_distributor_queue.put((constants.MSG_PRIORITY_CONTROL, copy.copy(client_connected_msg_backup))) #copy to avoid any changes that thread could make
+                                    duplication_handler_queue.put((constants.MSG_PRIORITY_CONTROL, copy.copy(client_connected_msg_backup)))
+
+                        else:
+                            self.logger.warning("GFD:: Received unexpected data: %s", data)
+                        
+                    except socket.timeout:
+                        pass
+                    except (OSError, socket.error) as e:
+                        is_connected = False
+                        #try reconnecting?
+
+                    if kill_switch_engaged:
+                        self.logger.warning("GFD: gfd_communicator received kill signal; exiting")
+
+        for csh in client_server_handlers:
+            self.logger.info("Kill client: %s", csh)
+            csh.thread_queue.put((constants.MSG_PRIORITY_MGMT ,messages.KillThreadMessage()))
+        self.logger.info("Exiting thread for GFD")
+
+    def run_duplication_handler(self, response_queue:queue.PriorityQueue):
         '''
-        Response queue will be a queue.Queue. It will receive 4 types of messages
+        Response queue will be a queue.PriorityQueue. It will receive 4 types of messages
         1) A message that says a request has been initiated for the servers. It will contain a request number. Instance of messages.ClientRequestMessage
         2) A message that includes the response from one of the servers. It will contain a request number, the replica number, and the response data. Instance of messages.ClientResponseMessage
         3) A message informing whether a server connection has been successfully created or torn down. Instance ofclient.ClientConnectedMessage
         4) A message informing the thread it should exit. Instance of messages.KillThreadMessage
-
         This thread needs to print messages that are avoided due to being duplication. Let's use the 'critical' logging level for this so that it always shows and we can suppress other output for demos
-
         '''
 
         '''
@@ -262,12 +555,13 @@ class Client:
 
         # variable to keep track of active servers communicating with the client
         num_active_servers = 0
+        primary_server_id = constants.NULL_SERVER_ID    
         kill_signal_received = False
         while not kill_signal_received:
 
             msg = None
             try: 
-                msg = response_queue.get(block=True, timeout=constants.QUEUE_TIMEOUT)
+                msg = response_queue.get(block=True, timeout=constants.QUEUE_TIMEOUT)[1] #entries are tuples of form (priority, msg)
                 self.logger.debug('Duplication handler received msg: [%s]', msg)
 
                 if(isinstance(msg, messages.ClientRequestMessage)):
@@ -279,6 +573,7 @@ class Client:
                 elif(isinstance(msg, messages.ClientResponseMessage)):  
                     req_no = msg.request_number  
                     s_id = msg.server_id
+
                     if req_no in find_dup_resp_msg: 
 
                         #increment to keep track of the number of messages we have got with the same req_no till now
@@ -290,17 +585,21 @@ class Client:
 
                         #remove the element with req_no as the key from the dictionary 
                         # we no longer need it as all possible duplicates are received if the below condn is satisfied
-                        if find_dup_resp_msg[req_no] == num_active_servers:
+                        if find_dup_resp_msg[req_no] == num_active_servers or s_id == primary_server_id:
                             find_dup_resp_msg.pop(req_no)
 
                 # increment active servers as a new server has established connection with the client
-                elif(isinstance(msg, ClientConnectedMessage)): 
-                    if msg.is_connected == True :
+                elif(isinstance(msg, ClientServerConnectionMessage)): 
+                    if msg.connection_action == constants.GFD_ACTION_NEW:
+                        self.logger.debug('duplication_handler::: server connection added')
                         num_active_servers = (num_active_servers + 1)
-                    else:
-                        num_active_servers = (num_active_servers - 1)     
+                    elif msg.connection_action == constants.GFD_ACTION_DEAD:
+                        self.logger.debug('duplication_handler::: server connection dead')
+                        num_active_servers = (num_active_servers - 1)  
 
-                        
+                    if msg.is_primary:
+                        primary_server_id = msg.server_id   
+
                 # decrement active servers as a server has disconnected
                 elif(isinstance(msg,messages.KillThreadMessage)):         
                     kill_signal_received = True
@@ -309,16 +608,17 @@ class Client:
 
             except queue.Empty: continue
 
+        self.logger.info("Exiting thread for duplicate handling")
 
 
 if __name__ == "__main__":
-    ip, port, client_id, address_info = parse_args() #won't we need multiple ip, port pairs for each of the replicas? Can pull from config file, CLI, or even RM
+    ip, port, client_id, address_info, gfd_ip = parse_args() #won't we need multiple ip, port pairs for each of the replicas? Can pull from config file, CLI, or even RM
     if len(address_info) == 0:
         address_info.append((1, ip+':'+port))
     # addr1 = '127.0.0.1:19618'
     # addr2 = '127.0.0.1:19619'
     # addr3 = '127.0.0.1:19620'
     DebugLogger.setup_file_handler('./client-'+str(client_id)+'.log', level=1)
-    client = Client(address_info=address_info, client_id=client_id)
+    client = Client(address_info=address_info, client_id=client_id, gfd_ip=gfd_ip)
     logger.info(client.server_addresses)
     client.start_client()

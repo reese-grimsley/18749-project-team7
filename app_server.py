@@ -15,7 +15,7 @@ HOST = constants.LOCAL_HOST # this needs to be outward facing (meaning localhost
 PORT = constants.DEFAULT_APP_SERVER_PORT
 
 # The all powerful global variable
-state_x = 0
+state_x = {}
 
 #this is causing error
 #my_ip = 0
@@ -31,6 +31,7 @@ def parse_args():
 
     parser.add_argument('-p', '--port', metavar='p', default=constants.DEFAULT_APP_SERVER_PORT, help='The port that the server will be listening to and that this LFD will access', type=int)
     parser.add_argument('-i', '--ip', metavar='i', default=constants.CATCH_ALL_IP, help='The IP address this server should bind to -- defaults to 0.0.0.0, which will work across any local address', type=str)
+    parser.add_argument('-s', '--server_id', metavar='sid', default=1, type=int, help='Identifier for the server')
     args = parser.parse_args()
 
     if args.port < 1024 or args.port > 65535:
@@ -43,6 +44,7 @@ def parse_args():
 
 def application_server_handler(client_socket, client_addr):
     global state_x
+    
     global my_ip
     global am_i_quiet
     connected = True
@@ -66,14 +68,49 @@ def application_server_handler(client_socket, client_addr):
             if isinstance(msg, messages.ClientRequestMessage):
                 if not am_i_quiet:
                     logger.critical('Received Message from client: %s', msg)
-                    echo(client_socket, msg, extra_data=str(state_x))
-                    state_x += 1
-                    logger.info("state_x is " + str(state_x))
+                   
+                    if  msg.client_id not in state_x: 
+                        state_x[msg.client_id] = 0
+                        
+                    state_x[msg.client_id] += 1   
+                    status = state_x[msg.client_id]
+                
+                    #logger.info("state_x is " + str(state_x))
+                    echo(client_socket, msg, extra_data=str(status))
 
             elif isinstance(msg, messages.LFDMessage) and msg.data == constants.MAGIC_MSG_LFD_REQUEST:
                 logger.info("Received from LFD: %s", msg.data)
                 respond_to_heartbeat(client_socket)
+            
+            elif isinstance(msg, messages.PrimaryMessage):
+                logger.critical("Received from LFD: %s", msg.data)
+                relaunch_server = msg.primary
+                relaunch_server_id = list(relaunch_server.keys())[0]
+                relaunch_server_ip = relaunch_server[relaunch_server_id]
+                relaunch_server_port = constants.DEFAULT_APP_SERVER_PORT
+                #TO DO: connect relaunched_server and send checkpoint  
+                # connect to server...client code
+                temp_flag = True
+                checkpoint_client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                while temp_flag:
+                    try:
+                        checkpoint_client_socket.connect((relaunch_server_ip, relaunch_server_port))
+                        logger.info('Connected to %s for the purpose of sending checkpoints', relaunch_server_ip)
+                        
+                        checkpoint_msg = messages.CheckpointMessage(state_x)
+                        checkpoint_msg_bytes = checkpoint_msg.serialize()
+                        checkpoint_client_socket.sendall(checkpoint_msg_bytes)
+                        logger.critical('Sent a checkpoint msg to active replica')
 
+                        temp_flag = False
+                        checkpoint_client_socket.close()
+
+                    except ConnectionRefusedError:
+                        temp_flag = True
+            elif isinstance(msg, messages.CheckpointMessage):  
+               logger.critical("Received from Server Checkpoint Message: the current state is %s", msg.x) 
+               state_x = msg.x
+               
             elif isinstance(msg, messages.QuietMessage):
                 logger.info('Received the quiet message from LFD')
                 if (msg.flag == 1):

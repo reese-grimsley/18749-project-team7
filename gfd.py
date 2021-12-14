@@ -2,146 +2,364 @@
 import socket, argparse, time
 import DebugLogger, constants
 import threading
-import messages
+import traceback
 from helper import is_valid_ipv4
+import messages
 
 membership = []
-membership_server_ip = []
-
-
+client_membership = []
+dead_list = {}
 logger = DebugLogger.get_logger('gfd')
-# when this flag is set, gfd sends quiescence is done message
-quiet_flag = False
+config = 1  # passive
+primary = {}  # at most one server id
+backup = {}
+conn_dict = {}
+client_conn_dict = {}
+
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Global Fault Detector")
 
-    parser.add_argument('-p', '--port', metavar='p', default=constants.DEFAULT_GFD_PORT, help='The port that the gfd will be listening to LFD', type=int)
-    parser.add_argument('-hb', '--heartbeat', metavar='HB', default=constants.DEFAULT_HEARTBEAT_PERIOD, help='The period between each heartbeat, in seconds', type=float)
-    parser.add_argument('-i', '--ip', metavar='i', default=constants.ECE_CLUSTER_ONE, help='The IP address of the gfd', type=str)
+    parser.add_argument('-p', '--port', metavar='p', default=constants.DEFAULT_GFD_PORT,
+                        help='The port that the gfd will be listening to LFD', type=int)
+    parser.add_argument('-hb', '--heartbeat', metavar='HB', default=constants.DEFAULT_HEARTBEAT_PERIOD,
+                        help='The period between each heartbeat, in seconds', type=float)
+    parser.add_argument('-i', '--ip', metavar='i', default=constants.ECE_CLUSTER_FOUR, help='The IP address of the gfd',
+                        type=str)
+    parser.add_argument('-c', '--config', metavar='t', default=constants.TYPE_PASSIVE,
+                        help='The configuration of the system. 0 for active, 1 for passive', type=int)
 
     args = parser.parse_args()
 
     if args.port < 1024 or args.port > 65535:
         raise ValueError('The port must be between 1024 and 65535')
-    if args.heartbeat <= 0: 
+    if args.heartbeat <= 0:
         raise ValueError('The heartbeat must be a positive value')
-    
-    return args.ip, args.port, args.heartbeat
 
-def print_membership():
-    global membership
-    num = len(membership)
+    return args.ip, args.port, args.heartbeat, args.config
+
+
+def print_membership(list):
+    num = len(list)
     members = ""
-    for member in membership:
-        members += "[" + member + "] "       
+    for member in list:
+        members += "[" + member + "] "
     logger.info("GFD: " + str(num) + " member(s) - " + members)
+
+
+def get_membership_index(server_info):
+    for i in range(len(membership)):
+        info = membership[i]
+        if server_info in info:
+            return i
+    return -1
+
+
+def build_message(action):
     
-def register_membership(data, ip_addr):
-    global membership
-    global membership_server_ip
+    primary_msg = messages.PrimaryMessage(primary, backup, action)
+    
+    #logger.info(primary_msg.action)
+    
+    '''for backup_id in backup:
+        logger.info("gfd have backup: " + str(backup_id) + " " + backup[backup_id])'''
+
+    return primary_msg
+
+def build_checkpoint_message(action, server_id, server_ip):
+    server_info = {}
+    server_info[server_id] = server_ip
+    if config == 0:
+        send_checkpoint_msg = messages.PrimaryMessage(server_info, {}, action)  
+        logger.info(send_checkpoint_msg.action)
+    
+    return send_checkpoint_msg
+
+def register_membership(data, conn):
+    IS_PRIMARY = False
+    response = str(data)
+    response_list = response.split()  # split based on spaces
+    # TODO: parse response
+    # server_type = response_list[0]
+    server_ip = response_list[len(response_list) - 1]
+    server_id = response_list[len(response_list) - 3]
+
+    if config == 0:
+        primary[server_id] = str(server_ip)
+        IS_PRIMARY = True
+        logger.info("Active replication: Added " + server_id)
+    
+        server_type = "Primary" if IS_PRIMARY else "Backup"
+        server = str(server_type) + " " + str(server_id) + " " + str(server_ip)
+        #print(dead_list)
+        #print(int(len(primary)))
+        if server_id in list(dead_list.keys()) and len(primary) > 0:
+            
+            checkpoint_sender = list(primary.keys())[0]    
+            # First, GFD sends message to LFD, telling to send checkpoint
+            send_checkpoint_msg = build_checkpoint_message(constants.SEND_CHECKPOINT, server_id, server_ip)
+            send_checkpoint_msg_bytes = send_checkpoint_msg.serialize()
+            sender_conn = conn_dict[checkpoint_sender]
+            logger.info("Notify " +  checkpoint_sender + " to send checkpoint to " + server_id)
+            sender_conn.sendall(send_checkpoint_msg_bytes)
+            dead_list.pop(server_id)
+            # TODO: ask checkpoint sender send checkpoint to backing 
+        
+        if server not in membership:
+            server_info = str(server_id) + " " + str(server_ip)
+            logger.info("Add active replication " + server + " to membership")
+            membership.append(server)
+            primary[server_id] = server_ip
+            conn_dict[server_id] = conn
+            print_membership(membership)
+    
+    else:   
+        if config and len(primary) == 0:  # set primary server and send primary msg to that server
+            primary[server_id] = str(server_ip)
+            IS_PRIMARY = True
+            logger.info("Assign " + server_id + " as primary.")
+    
+        server_type = "Primary" if IS_PRIMARY else "Backup"
+        server = str(server_type) + " " + str(server_id) + " " + str(server_ip)
+    
+        if server not in membership:
+            server_info = str(server_id) + " " + str(server_ip)
+            if (server_info in s for s in membership):
+                idx = get_membership_index(server_info)
+                if idx != -1:
+                    info = membership[idx]
+                    if "Primary" in info:
+                        return
+                    membership.pop(idx)
+            logger.info("Add " + server + " to membership")
+            membership.append(server)
+            if IS_PRIMARY is False:
+                backup[server_id] = str(server_ip)
+            conn_dict[server_id] = conn
+            print_membership(membership)
+    
+        if config and len(primary) == 1:  # send primary info to current server
+            primary_id = list(primary.keys())[0]
+            # logger.info(primary_id)
+            # primary_msg = messages.PrimaryMessage(primary_id)
+            if IS_PRIMARY is True:  # add primary
+                primary_msg = build_message(constants.ADD_PRIMARY)
+            else:  # add backup
+                primary_msg = build_message(constants.ADD_BACKUP)
+    
+            primary_msg_bytes = primary_msg.serialize()
+            for conn_key in conn_dict:
+                logger.info("Register membership: notice server " + conn_key)
+                conn_value = conn_dict[conn_key]
+                conn_value.sendall(primary_msg_bytes)
+            for client_conn_key in client_conn_dict:
+                logger.info("Register membership: notice client " + client_conn_key)
+                primary_id_num = primary_id[1]
+                client_primary_msgs = messages.GFDClientMessage(primary[primary_id], primary_id_num, True, constants.GFD_ACTION_UPDATE)
+                client_primary_msgs_bytes = client_primary_msgs.serialize()
+                client_conn_value = client_conn_dict[client_conn_key]
+                client_conn_value.sendall(client_primary_msgs_bytes)
+        
+
+
+
+def register_client(data, conn):
     response = str(data)
     response_list = response.split()
-    server_ip = response_list[len(response_list) - 1]
-    server_id = response_list[len(response_list) - 2]
-    server = str(server_id) + str(server_ip)
-    logger.info("Add " + server + " to membership")
-    membership.append(server) 
-    membership_server_ip.append(str(ip_addr[0]))
-    print('added server_ip: '+ str(ip_addr[0]))
-    print_membership()
-    
-def cancel_membership(data, ip_addr):
-    global membership
-    global membership_server_ip
+    client_id = response_list[len(response_list) - 1]
+    client = "C" + str(client_id)
+    if client not in client_membership:
+        logger.info("Add " + client + " to membership")
+        client_membership.append(client)
+        print_membership(client_membership)
+        client_conn_dict[client] = conn
+
+
+def cancel_membership(data, conn):
     response = str(data)
     response_list = response.split()
+    # server_type = response_list[0]
     server_ip = response_list[len(response_list) - 1]
-    server_id = response_list[len(response_list) - 2]
-    server = str(server_id) + str(server_ip)
-    logger.info("Remove " + server + " out membership")
+    server_id = response_list[len(response_list) - 3]
+    # server = str(server_type) + " " + str(server_id) + " : " + str(server_ip)
+    # logger.info("Remove " + server + " out membership")
+
+    # TODO: If active, update deadlist and removed from membership and primary
+
+    server_type = "Primary" if server_id in primary else "Backup"
+    server = str(server_type) + " " + str(server_id) + " " + str(server_ip)
     if server in membership:
+        server_info = str(server_id) + " " + str(server_ip)
+        logger.info("Remove " + server + " out membership")
         membership.remove(server)
+        if server_id in conn_dict:
+            conn_dict.pop(server_id)
+            logger.info("Remove " + server_id + " from conn_dict")
+        print_membership(membership)
 
-    if str(ip_addr[0]) in membership_server_ip: 
-        membership_server_ip.remove(str(ip_addr[0]))
-        print('removed server_ip: '+ str(ip_addr[0]))
+    if config == 0:
+        primary.pop(server_id)
+        logger.info("Add " + server_id + " to dead list")
+        dead_list[server_id] = server_ip
+        
+        
+    if config and len(primary) == 1:  # if passive and there exist primary
+        logger.info("Check whether is primary to remove")
+        if server_id == list(primary.keys())[0]:  # if primary
+            logger.info("Yes, it is primary and to be removed.")
+            primary.pop(server_id)
 
-    print_membership()
-    
+    if server_type == "Backup":
+        backup.pop(server_id)
+        primary_id = list(primary.keys())[0]
+        primary_conn = conn_dict[primary_id]
+        primary_msg = build_message(constants.REMOVE_BACKUP)
+        primary_msg_bytes = primary_msg.serialize()
+        primary_conn.sendall(primary_msg_bytes)
+
+    if config and len(primary) == 0 and len(backup) > 0:  # no primary, we random choose one in membership
+        logger.info("Currently no primary, assign a new one...")
+        new_primary_id = list(backup.keys())[0]
+        new_primary_ip = backup[new_primary_id]
+        logger.info("Assign " + new_primary_id + " as new primary.")
+        server = "Backup" + " " + str(new_primary_id) + " " + str(new_primary_ip)
+        if server in membership:
+            membership.remove(server)
+            server = "Primary" + " " + str(new_primary_id) + " " + str(new_primary_ip)
+            membership.append(server)
+            print_membership(membership)
+        primary[new_primary_id] = backup[new_primary_id]
+        backup.pop(new_primary_id)
+        primary_msg = build_message(constants.ADD_PRIMARY)
+        primary_msg_bytes = primary_msg.serialize()
+        # tell all servers info of the new primary server
+        # conn.sendall(primary_msg_bytes)
+        for conn_key in conn_dict:
+            logger.info("Cancel membership: notice server " + conn_key)
+            conn_value = conn_dict[conn_key]
+            conn_value.sendall(primary_msg_bytes)
+        # tell all servers info of the new primary server
+        for client_conn_key in client_conn_dict:
+            logger.info("Cancel membership: notice client " + client_conn_key)
+            new_primary_id_num = new_primary_id[1]
+            client_primary_msgs = messages.GFDClientMessage(primary[new_primary_id], new_primary_id_num, True, constants.GFD_ACTION_UPDATE)
+            client_primary_msgs_bytes = client_primary_msgs.serialize()
+            client_conn_value = client_conn_dict[client_conn_key]
+            try:
+                client_conn_value.sendall(client_primary_msgs_bytes)
+            except: 
+                logger.error("Failed to send UPDATE message to client %s" % client_conn_key)
+                logger.error(traceback.format_exc())
+
+
+def parse_membership(member):
+    # member format: Primary S1 127.0.0.1
+    member_list = member.split()  # split based on spaces
+    server_type = member_list[0]
+    # print(str(server_type))
+    server_ip = member_list[len(member_list) - 1]
+    server_id = member_list[len(member_list) - 2][1]
+    logger.info("parse_membership: server_id " + server_id)
+    if config == 0:
+        is_primary = None
+    else :    
+        is_primary = True if "Primary" in server_type else False
+    return server_ip, server_id, is_primary
+
+
+def serve_client(conn):
+    prev_list = []
+    while True:
+        if len(membership) > len(prev_list):
+            for member in membership:
+                if member not in prev_list:
+                    break
+            # server_ip, sid, is_primary=None, action=constants.GFD_ACTION_NEW
+            server_ip, server_id, is_primary = parse_membership(member)
+
+            gfd_msg = messages.GFDClientMessage(server_ip, server_id, is_primary, constants.GFD_ACTION_NEW)
+            logger.info("GFD notify Client: [" + constants.MAGIC_MSG_ADD_NEW_SERVER + gfd_msg.data + "]")
+            gfd_msg_bytes = gfd_msg.serialize()
+            conn.sendall(gfd_msg_bytes)
+            # msg = constants.MAGIC_MSG_ADD_NEW_SERVER + str(connID)
+            # conn.sendall(bytes(msg, encoding='utf-8'))
+            prev_list.append(member)
+            time.sleep(1)
+        elif len(membership) < len(prev_list):
+            for member in prev_list:
+                if member not in membership:
+                    break
+            server_ip, server_id, is_primary = parse_membership(member)
+            gfd_msg = messages.GFDClientMessage(server_ip, server_id, is_primary, constants.GFD_ACTION_DEAD)
+            gfd_msg_bytes = gfd_msg.serialize()
+            conn.sendall(gfd_msg_bytes)
+            # msg = constants.MAGIC_MSG_REMOVE_SERVER + str(connID)
+            # conn.sendall(bytes(msg, encoding='utf-8'))
+            prev_list.remove(member)
+            logger.info("GFD notify Client: [" + constants.MAGIC_MSG_REMOVE_SERVER + gfd_msg.data + "]")
+        else:
+            continue
+
+
 def poke_lfd(conn, period):
     success = False
-    try: 
+    try:
         data = conn.recv(1024).decode(encoding='utf-8')
-        #conn.sendall(bytes(constants.MAGIC_MSG_GFD_REQUEST, encoding='utf-8'))
-        gfd_req_message = messages.Gfd_Request()
-        gfd_bytes = gfd_req_message.serialize()
-        conn.sendall(gfd_bytes)
-
+        conn.sendall(bytes(constants.MAGIC_MSG_GFD_REQUEST, encoding='utf-8'))
         success = True
-        
+
     except socket.timeout as st:
         logger.error("Heartbeat request timed out")
         success = False
     except Exception as e:
-        print(e)
-        
+        logger.error(traceback.format_exc())
+
     return success
 
+
 def serve_lfd(conn, addr, period):
-    global membership
-    global membership_server_ip
-    global quiet_flag
     try:
         lfd_status = True
+
         while True:
-            # if quiet_flag is true, we send quiet is done to all the LFD + servers
-            if (quiet_flag):
-                logger.info("Escaping quiescence...")
-                quiet_message = messages.QuietMessage(membership_server_ip[0], membership_server_ip[-1], 2)
-                quiet_bytes = quiet_message.serialize()
-                conn.sendall(quiet_bytes)
-                quiet_flag = False
-            
-            #lfd_status = poke_lfd(conn, period)
-            # conn.sendall(bytes(constants.MAGIC_MSG_GFD_REQUEST, encoding='utf-8'))
+            # send GFD request LFD heartbeat to LFD
+            gfd_request = messages.GFDMessage()
+            gfd_request_bytes = gfd_request.serialize()
+            conn.sendall(gfd_request_bytes)
 
-            gfd_req_message = messages.Gfd_Request()
-            gfd_bytes = gfd_req_message.serialize()
-            conn.sendall(gfd_bytes)
+            response_bytes = conn.recv(constants.MAX_MSG_SIZE)
+            response_msg = messages.deserialize(response_bytes)
 
-            data = conn.recv(1024).decode(encoding='utf-8')
-            logger.info('Received from LFD %s: [%s]', str(addr), str(data))
-
-            if constants.MAGIC_MSG_RESPONSE_FROM_LFD in data:    # if receive lfd heartbeat
+            # logger.info('Received from LFD %s: [%s]', str(addr), response_msg.data)
+            if constants.MAGIC_MSG_LFD_RESPONSE in response_msg.data:  # if receive lfd heartbeat
+                logger.info('Received from LFD %s: [%s]', str(addr), response_msg.data)
                 success = True
-            elif constants.MAGIC_MSG_SERVER_FAIL in data:        # if receive server fail message, cancel membership
-                cancel_membership(data, addr)
+            elif constants.MAGIC_MSG_SERVER_FAIL in response_msg.data:  # if receive server fail message, cancel membership
+                logger.info('Received from LFD %s: [%s]', str(addr), response_msg.data)
+                cancel_membership(response_msg.data, conn)
                 success = True
-            elif constants.MAGIC_MSG_QUIESCENCE_DONE in data:
-                quiet_flag = True
-            elif constants.MAGIC_MSG_SERVER_START in data:
-                register_membership(data, addr)
+            elif constants.MAGIC_MSG_SERVER_START in response_msg.data:
+                logger.info('Received from LFD %s: [%s]', str(addr), response_msg.data)
+                register_membership(response_msg.data, conn)
                 success = True
-
-                if len(membership) >= 2:
-                    #send a go to quiescence msg to all servers
-                    logger.info("Entering quiescence...")
-                    quiet_message = messages.QuietMessage(membership_server_ip[0], membership_server_ip[-1])
-                    quiet_bytes = quiet_message.serialize()
-                    conn.sendall(quiet_bytes)
-
-
+            elif constants.MAGIC_MSG_RESPONSE_FROM_CLIENT in response_msg.data:
+                logger.info('Received from Client %s: [%s]', str(addr), response_msg.data)
+                print("start register client")
+                register_client(response_msg.data, conn)
+                print("start serve client")
+                serve_client(conn)
+                print("finish client")
+                success = True
 
             if not lfd_status:
                 logger.debug("Something wrong with lfd")
                 break
+
             time.sleep(period)
     except Exception as e:
-        logger.info("in serve lfd")
-        print(e)
+        logger.error(traceback.format_exc())
 
-    finally: 
+    finally:
         conn.close()
         logger.info('Closed connection for lfd at (%s)', addr)
 
@@ -149,6 +367,8 @@ def serve_lfd(conn, addr, period):
 def start_conn(ip, port, period):
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as gfd_socket:
         try:
+            gfd_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1) # More portable to use socket.SO_REUSEADDR than SO_REUSEPORT.
+
             gfd_socket.bind((ip, port))
             gfd_socket.listen()
 
@@ -163,6 +383,7 @@ def start_conn(ip, port, period):
         except Exception as e:
             logger.error(e)
 
+
 if __name__ == "__main__":
-    gfd_ip, gfd_port, heartbeat_period = parse_args()
-    start_conn(ip=gfd_ip, port=gfd_port, period=heartbeat_period) 
+    gfd_ip, gfd_port, heartbeat_period, config = parse_args()
+    start_conn(ip=gfd_ip, port=gfd_port, period=heartbeat_period)
